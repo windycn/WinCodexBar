@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>WinCodexBar</AssemblyName>
+    <Product>WinCodexBar</Product>
+    <Title>WinCodexBar</Title>
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0.0</FileVersion>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <InformationalVersion>0.1.0</InformationalVersion>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <ApplicationIcon>Assets\Icons\WinCodexBar.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Assets\\Icons\\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="Assets\\Icons\\WinCodexBar.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CopyApplicationIconToPublishDirectory" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)Assets\Icons" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Assets\Icons\WinCodexBar.ico"
+          DestinationFolder="$(PublishDir)Assets\Icons"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

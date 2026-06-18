@@ -1,0 +1,69 @@
+# Xcode
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+xcuserdata/
+*.xcscmblueprint
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# Build
+build/
+DerivedData/
+dist/
+artifacts/
+**/bin/
+**/obj/
+windows/release-*/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+*.resolved
+
+# CocoaPods
+Pods/
+Podfile.lock
+
+# Carthage
+Carthage/Build/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Local agent state / release artifacts
+.omx/
+.ufoo/
+.playwright-cli/
+.tmp_ref/
+output/
+scripts/
+windows/*.json
+
+# Legacy workspace material outside the Windows release scope
+codexBar/
+codexbar.xcodeproj/
+codexBarTests/
+docs/
+register/
+release-feed/
+git_updates.md
+windows/git_updates.md
+
+# Sensitive
+*.p12
+*.mobileprovision
+*.provisionprofile
