@@ -124,9 +124,9 @@ WinCodexBar puts these controls into a tray menu, a dashboard, and a settings wi
 
 Choose the package that matches your Windows device:
 
-- `WinCodexBar-0.1.0-win-x64.zip`: most 64-bit Intel / AMD Windows devices.
-- `WinCodexBar-0.1.0-win-x86.zip`: older 32-bit Windows devices.
-- `WinCodexBar-0.1.0-win-arm64.zip`: Windows on ARM devices.
+- `WinCodexBar-0.1.1-win-x64.zip`: most 64-bit Intel / AMD Windows devices.
+- `WinCodexBar-0.1.1-win-x86.zip`: older 32-bit Windows devices.
+- `WinCodexBar-0.1.1-win-arm64.zip`: Windows on ARM devices.
 
 Extract the archive and run `WinCodexBar.exe`. After launch, the app appears in the system tray.
 
@@ -162,7 +162,7 @@ dotnet publish windows\CodexBarWin\CodexBarWin.csproj -c Release -r win-x64 --se
 
 ## Version
 
-Current version: `0.1.0`
+Current version: `0.1.1`
 
 See [CHANGELOG.md](./CHANGELOG.md) for release notes.
 

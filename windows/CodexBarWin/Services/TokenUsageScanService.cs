@@ -1,9 +1,11 @@
 using CodexBarWin.Models;
+using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 
 namespace CodexBarWin.Services;
@@ -104,6 +106,21 @@ public sealed record SessionAnalysisSummary(
 
 public static class TokenUsageScanService
 {
+    private static readonly Regex LogFieldRegex = new(
+        @"(?<!\S)([A-Za-z0-9_.-]+)=(""[^""]*""|\S+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly object SqliteUsageCacheGate = new();
+    private static DateTimeOffset _sqliteUsageCacheAt = DateTimeOffset.MinValue;
+    private static IReadOnlyList<TokenUsageEvent>? _sqliteUsageCache;
+
+    private sealed record TokenUsageEvent(
+        DateTimeOffset Timestamp,
+        TokenCostBreakdown Usage,
+        string SessionId,
+        string Model,
+        bool IsArchived,
+        string DedupKey);
+
     public static TokenUsageSummary Scan()
     {
         var now = DateTimeOffset.UtcNow;
@@ -123,6 +140,7 @@ public static class TokenUsageScanService
         DateTimeOffset? secondaryResetAt = null;
         string? planType = null;
         DateTimeOffset? latestRateLimitAt = null;
+        var seenUsageEvents = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var file in EnumerateSessionFiles())
         {
@@ -130,8 +148,7 @@ public static class TokenUsageScanService
             {
                 foreach (var line in File.ReadLines(file))
                 {
-                    if (!line.Contains("\"token_count\"", StringComparison.Ordinal)
-                        || !line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
+                    if (!line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -157,6 +174,10 @@ public static class TokenUsageScanService
                     {
                         continue;
                     }
+
+                    var sessionId = ExtractSessionIdFromPath(file);
+                    var model = FindString(root, "model") ?? FindString(root, "model_slug") ?? string.Empty;
+                    seenUsageEvents.Add(BuildUsageEventKey(sessionId, timestamp, usage, model));
 
                     var age = now - timestamp;
                     var localDate = timestamp.ToLocalTime().Date;
@@ -206,6 +227,47 @@ public static class TokenUsageScanService
             }
         }
 
+        foreach (var usageEvent in EnumerateSqliteUsageEvents())
+        {
+            if (!seenUsageEvents.Add(usageEvent.DedupKey))
+            {
+                continue;
+            }
+
+            var tokens = usageEvent.Usage.TotalTokens;
+            if (tokens <= 0)
+            {
+                continue;
+            }
+
+            var age = now - usageEvent.Timestamp;
+            var localDate = usageEvent.Timestamp.ToLocalTime().Date;
+            if (localDate == todayStart)
+            {
+                today += tokens;
+            }
+
+            if (localDate >= weekStart)
+            {
+                thisWeek += tokens;
+            }
+
+            if (localDate >= monthStart)
+            {
+                thisMonth += tokens;
+            }
+
+            if (age.TotalDays <= 30)
+            {
+                last30d += tokens;
+            }
+
+            if (age.TotalHours <= 24)
+            {
+                last24h += tokens;
+            }
+        }
+
         return new TokenUsageSummary(
             last24h,
             last30d,
@@ -235,6 +297,8 @@ public static class TokenUsageScanService
         var thisWeekCost = TokenCostBreakdown.Empty;
         var thisMonthCost = TokenCostBreakdown.Empty;
         var totalCost = TokenCostBreakdown.Empty;
+        var seenUsageEvents = new HashSet<string>(StringComparer.Ordinal);
+        var sqliteSessionBounds = new Dictionary<string, (DateTimeOffset First, DateTimeOffset Last)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in EnumerateSessionFiles())
         {
@@ -244,8 +308,7 @@ public static class TokenUsageScanService
                 DateTimeOffset? last = null;
                 foreach (var line in File.ReadLines(file))
                 {
-                    if (!line.Contains("\"token_count\"", StringComparison.Ordinal)
-                        || !line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
+                    if (!line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -271,6 +334,10 @@ public static class TokenUsageScanService
                     {
                         continue;
                     }
+
+                    var sessionId = ExtractSessionIdFromPath(file);
+                    var model = FindString(root, "model") ?? FindString(root, "model_slug") ?? string.Empty;
+                    seenUsageEvents.Add(BuildUsageEventKey(sessionId, timestamp, usage, model));
 
                     var date = timestamp.ToLocalTime().Date;
                     totalCost = TokenCostBreakdown.Add(totalCost, usage);
@@ -310,6 +377,67 @@ public static class TokenUsageScanService
             catch
             {
                 // 单个损坏 session 不影响整体统计。
+            }
+        }
+
+        foreach (var usageEvent in EnumerateSqliteUsageEvents())
+        {
+            if (!seenUsageEvents.Add(usageEvent.DedupKey))
+            {
+                continue;
+            }
+
+            var usage = usageEvent.Usage;
+            var tokens = usage.TotalTokens;
+            if (tokens <= 0)
+            {
+                continue;
+            }
+
+            var date = usageEvent.Timestamp.ToLocalTime().Date;
+            totalCost = TokenCostBreakdown.Add(totalCost, usage);
+            dailyTokens[date] = dailyTokens.TryGetValue(date, out var existing)
+                ? existing + tokens
+                : tokens;
+
+            if (date == todayStart)
+            {
+                todayCost = TokenCostBreakdown.Add(todayCost, usage);
+                var localTime = usageEvent.Timestamp.ToLocalTime();
+                var hour = new DateTime(localTime.Year, localTime.Month, localTime.Day, localTime.Hour, 0, 0);
+                todayHourlyTokens[hour] = todayHourlyTokens.TryGetValue(hour, out var hourly)
+                    ? hourly + tokens
+                    : tokens;
+            }
+
+            if (date >= weekStart)
+            {
+                thisWeekCost = TokenCostBreakdown.Add(thisWeekCost, usage);
+            }
+
+            if (date >= monthStart)
+            {
+                thisMonthCost = TokenCostBreakdown.Add(thisMonthCost, usage);
+            }
+
+            var sessionKey = NormalizeSessionId(usageEvent.SessionId);
+            if (sqliteSessionBounds.TryGetValue(sessionKey, out var bounds))
+            {
+                sqliteSessionBounds[sessionKey] = (
+                    usageEvent.Timestamp < bounds.First ? usageEvent.Timestamp : bounds.First,
+                    usageEvent.Timestamp > bounds.Last ? usageEvent.Timestamp : bounds.Last);
+            }
+            else
+            {
+                sqliteSessionBounds[sessionKey] = (usageEvent.Timestamp, usageEvent.Timestamp);
+            }
+        }
+
+        foreach (var bounds in sqliteSessionBounds.Values)
+        {
+            if (bounds.Last > bounds.First)
+            {
+                taskDurations.Add(bounds.Last - bounds.First);
             }
         }
 
@@ -355,12 +483,13 @@ public static class TokenUsageScanService
     {
         var sessions = new List<SessionInsight>();
         var archivedRoot = Path.Combine(CodexPaths.CodexRoot, "archived_sessions");
+        var seenUsageEvents = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var file in EnumerateSessionFiles())
         {
             try
             {
-                var sessionId = Path.GetFileNameWithoutExtension(file);
+                var sessionId = ExtractSessionIdFromPath(file);
                 var archived = file.StartsWith(archivedRoot, StringComparison.OrdinalIgnoreCase);
                 DateTimeOffset? first = null;
                 DateTimeOffset? last = null;
@@ -377,8 +506,10 @@ public static class TokenUsageScanService
 
                     using var document = JsonDocument.Parse(line);
                     var root = document.RootElement;
+                    DateTimeOffset? eventTimestamp = null;
                     if (TryReadTimestamp(root, out var timestamp))
                     {
+                        eventTimestamp = timestamp;
                         first = first is null || timestamp < first ? timestamp : first;
                         last = last is null || timestamp > last ? timestamp : last;
                         events++;
@@ -395,6 +526,16 @@ public static class TokenUsageScanService
                         if (usage.TotalTokens > 0)
                         {
                             tokens += usage.TotalTokens;
+                            if (eventTimestamp is not null)
+                            {
+                                var eventModel = model;
+                                if (string.IsNullOrWhiteSpace(eventModel))
+                                {
+                                    eventModel = FindString(root, "model") ?? FindString(root, "model_slug") ?? string.Empty;
+                                }
+
+                                seenUsageEvents.Add(BuildUsageEventKey(sessionId, eventTimestamp.Value, usage, eventModel));
+                            }
                         }
                     }
                 }
@@ -418,6 +559,64 @@ public static class TokenUsageScanService
             {
                 // 单个损坏 session 不影响整体分析。
             }
+        }
+
+        var sqliteSessions = new Dictionary<string, (DateTimeOffset First, DateTimeOffset Last, string Model, long Tokens, int Count)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var usageEvent in EnumerateSqliteUsageEvents())
+        {
+            if (!seenUsageEvents.Add(usageEvent.DedupKey))
+            {
+                continue;
+            }
+
+            var sessionId = NormalizeSessionId(usageEvent.SessionId);
+            if (sqliteSessions.TryGetValue(sessionId, out var existing))
+            {
+                sqliteSessions[sessionId] = (
+                    usageEvent.Timestamp < existing.First ? usageEvent.Timestamp : existing.First,
+                    usageEvent.Timestamp > existing.Last ? usageEvent.Timestamp : existing.Last,
+                    string.IsNullOrWhiteSpace(existing.Model) || existing.Model == "unknown" ? usageEvent.Model : existing.Model,
+                    existing.Tokens + usageEvent.Usage.TotalTokens,
+                    existing.Count + 1);
+            }
+            else
+            {
+                sqliteSessions[sessionId] = (
+                    usageEvent.Timestamp,
+                    usageEvent.Timestamp,
+                    string.IsNullOrWhiteSpace(usageEvent.Model) ? "unknown" : usageEvent.Model,
+                    usageEvent.Usage.TotalTokens,
+                    1);
+            }
+        }
+
+        foreach (var pair in sqliteSessions)
+        {
+            var index = sessions.FindIndex(item => string.Equals(NormalizeSessionId(item.SessionId), pair.Key, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                var duration = pair.Value.Last > pair.Value.First ? pair.Value.Last - pair.Value.First : TimeSpan.Zero;
+                sessions.Add(new SessionInsight(pair.Key, pair.Value.Model, pair.Value.First, pair.Value.Last, duration, pair.Value.Tokens, pair.Value.Count, false));
+                continue;
+            }
+
+            var current = sessions[index];
+            var first = current.StartedAt is null || pair.Value.First < current.StartedAt.Value
+                ? pair.Value.First
+                : current.StartedAt.Value;
+            var last = current.LastActivityAt is null || pair.Value.Last > current.LastActivityAt.Value
+                ? pair.Value.Last
+                : current.LastActivityAt.Value;
+            var model = current.Model == "unknown" ? pair.Value.Model : current.Model;
+            sessions[index] = new SessionInsight(
+                current.SessionId,
+                model,
+                first,
+                last,
+                last > first ? last - first : TimeSpan.Zero,
+                current.TotalTokens + pair.Value.Tokens,
+                current.EventCount + pair.Value.Count,
+                current.IsArchived);
         }
 
         if (sessions.Count == 0)
@@ -456,6 +655,294 @@ public static class TokenUsageScanService
             recent,
             top,
             modelTokens);
+    }
+
+    private static IEnumerable<TokenUsageEvent> EnumerateSqliteUsageEvents()
+    {
+        var now = DateTimeOffset.UtcNow;
+        lock (SqliteUsageCacheGate)
+        {
+            if (_sqliteUsageCache is not null && (now - _sqliteUsageCacheAt).TotalSeconds <= 5)
+            {
+                return _sqliteUsageCache;
+            }
+        }
+
+        var events = EnumerateSqliteUsageEventsUncached().ToArray();
+        lock (SqliteUsageCacheGate)
+        {
+            _sqliteUsageCache = events;
+            _sqliteUsageCacheAt = now;
+        }
+
+        return events;
+    }
+
+    private static IEnumerable<TokenUsageEvent> EnumerateSqliteUsageEventsUncached()
+    {
+        foreach (var sqlitePath in EnumerateCodexLogDatabases())
+        {
+            if (!File.Exists(sqlitePath))
+            {
+                continue;
+            }
+
+            var snapshotPath = TryCreateSqliteSnapshot(sqlitePath);
+            try
+            {
+                if (snapshotPath is not null)
+                {
+                    foreach (var usageEvent in EnumerateSqliteUsageEventsFromPath(snapshotPath))
+                    {
+                        yield return usageEvent;
+                    }
+                }
+
+                foreach (var usageEvent in EnumerateSqliteUsageEventsFromPath(sqlitePath))
+                {
+                    yield return usageEvent;
+                }
+            }
+            finally
+            {
+                if (snapshotPath is not null)
+                {
+                    DeleteSqliteSnapshot(snapshotPath);
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<TokenUsageEvent> EnumerateSqliteUsageEventsFromPath(string sqlitePath)
+    {
+            var builder = new SqliteConnectionStringBuilder
+            {
+                DataSource = sqlitePath,
+                Mode = SqliteOpenMode.ReadOnly,
+                Cache = SqliteCacheMode.Shared,
+                Pooling = false,
+            };
+
+            using var connection = new SqliteConnection(builder.ToString());
+            try
+            {
+                connection.Open();
+            }
+            catch
+            {
+                yield break;
+            }
+
+            using var command = connection.CreateCommand();
+            command.CommandTimeout = 3;
+            command.CommandText = """
+                SELECT id, ts, target, feedback_log_body
+                FROM logs
+                WHERE feedback_log_body LIKE '%event.name="codex.sse_event"%'
+                  AND feedback_log_body LIKE '%event.kind=response.completed%'
+                  AND feedback_log_body LIKE '%input_token_count=%'
+                ORDER BY id ASC
+                """;
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                TokenUsageEvent? usageEvent = null;
+                try
+                {
+                    var rowId = reader.GetInt64(0);
+                    var seconds = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    var body = reader.IsDBNull(3) ? string.Empty : reader.GetString(3);
+
+                    if (string.IsNullOrWhiteSpace(body))
+                    {
+                        continue;
+                    }
+
+                    var fields = ParseLogFields(body);
+                    if (!string.Equals(ReadLogField(fields, "event.name"), "codex.sse_event", StringComparison.Ordinal)
+                        || !string.Equals(ReadLogField(fields, "event.kind"), "response.completed", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var timestamp = ReadLogTimestamp(fields)
+                        ?? (seconds > 0 ? DateTimeOffset.FromUnixTimeSeconds(seconds) : DateTimeOffset.UtcNow);
+                    var input = ReadLongLogField(fields, "input_token_count", "input_tokens") ?? 0;
+                    var output = ReadLongLogField(fields, "output_token_count", "output_tokens") ?? 0;
+                    var cached = ReadLongLogField(fields, "cached_token_count", "cached_input_tokens", "cache_read_input_tokens") ?? 0;
+                    var total = ReadLongLogField(fields, "total_token_count", "total_tokens", "tool_token_count") ?? input + output;
+
+                    if (input <= 0 && output <= 0 && total > 0)
+                    {
+                        input = total;
+                    }
+
+                    if (total <= 0)
+                    {
+                        total = input + output;
+                    }
+
+                    if (total <= 0)
+                    {
+                        continue;
+                    }
+
+                    cached = Math.Clamp(cached, 0, Math.Max(0, input));
+                    var usage = new TokenCostBreakdown(input, cached, output, total);
+                    var sessionId = ReadLogField(fields, "conversation.id")
+                        ?? ReadLogField(fields, "thread.id")
+                        ?? $"sqlite-{rowId}";
+                    var model = ReadLogField(fields, "model")
+                        ?? ReadLogField(fields, "slug")
+                        ?? string.Empty;
+
+                    usageEvent = new TokenUsageEvent(
+                        timestamp,
+                        usage,
+                        sessionId,
+                        model,
+                        IsArchived: false,
+                        BuildUsageEventKey(sessionId, timestamp, usage, model));
+                }
+                catch
+                {
+                    // SQLite 正在写入或单行格式变化时，跳过该行。
+                }
+
+                if (usageEvent is not null)
+                {
+                    yield return usageEvent;
+                }
+            }
+    }
+
+    private static IEnumerable<string> EnumerateCodexLogDatabases()
+    {
+        yield return Path.Combine(CodexPaths.CodexRoot, "logs_2.sqlite");
+        yield return Path.Combine(CodexPaths.CodexRoot, "logs.sqlite");
+    }
+
+    private static string? TryCreateSqliteSnapshot(string sourcePath)
+    {
+        try
+        {
+            var snapshotRoot = Path.Combine(Path.GetTempPath(), "WinCodexBar", "sqlite-snapshots");
+            Directory.CreateDirectory(snapshotRoot);
+            var snapshotPath = Path.Combine(snapshotRoot, $"{Path.GetFileNameWithoutExtension(sourcePath)}-{Guid.NewGuid():N}.sqlite");
+            File.Copy(sourcePath, snapshotPath, overwrite: true);
+            CopyIfExists(sourcePath + "-wal", snapshotPath + "-wal");
+            CopyIfExists(sourcePath + "-shm", snapshotPath + "-shm");
+            return snapshotPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void CopyIfExists(string sourcePath, string targetPath)
+    {
+        if (File.Exists(sourcePath))
+        {
+            File.Copy(sourcePath, targetPath, overwrite: true);
+        }
+    }
+
+    private static void DeleteSqliteSnapshot(string snapshotPath)
+    {
+        foreach (var path in new[] { snapshotPath, snapshotPath + "-wal", snapshotPath + "-shm" })
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // 临时快照清理失败不影响应用运行。
+            }
+        }
+    }
+
+    private static Dictionary<string, string> ParseLogFields(string body)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match match in LogFieldRegex.Matches(body))
+        {
+            var key = match.Groups[1].Value;
+            var value = match.Groups[2].Value;
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
+                value = value[1..^1].Replace("\\\"", "\"", StringComparison.Ordinal);
+            }
+
+            fields[key] = value;
+        }
+
+        return fields;
+    }
+
+    private static string? ReadLogField(Dictionary<string, string> fields, string name)
+    {
+        return fields.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
+    }
+
+    private static long? ReadLongLogField(Dictionary<string, string> fields, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (fields.TryGetValue(name, out var value)
+                && long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number))
+            {
+                return number;
+            }
+        }
+
+        return null;
+    }
+
+    private static DateTimeOffset? ReadLogTimestamp(Dictionary<string, string> fields)
+    {
+        return fields.TryGetValue("event.timestamp", out var value)
+               && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var timestamp)
+            ? timestamp
+            : null;
+    }
+
+    private static string BuildUsageEventKey(string sessionId, DateTimeOffset timestamp, TokenCostBreakdown usage, string? model)
+    {
+        return string.Join(
+            "|",
+            NormalizeSessionId(sessionId),
+            timestamp.ToUniversalTime().ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+            usage.InputTokens.ToString(CultureInfo.InvariantCulture),
+            usage.CachedInputTokens.ToString(CultureInfo.InvariantCulture),
+            usage.OutputTokens.ToString(CultureInfo.InvariantCulture),
+            usage.TotalTokens.ToString(CultureInfo.InvariantCulture),
+            (model ?? string.Empty).Trim());
+    }
+
+    private static string ExtractSessionIdFromPath(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        foreach (Match match in Regex.Matches(name, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))
+        {
+            name = match.Value;
+        }
+
+        return NormalizeSessionId(name);
+    }
+
+    private static string NormalizeSessionId(string? sessionId)
+    {
+        return string.IsNullOrWhiteSpace(sessionId)
+            ? "unknown"
+            : sessionId.Trim();
     }
 
     private static TokenCostBreakdown ReadTokenUsage(JsonElement lastUsage)

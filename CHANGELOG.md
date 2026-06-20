@@ -1,5 +1,20 @@
 # 更新日志
 
+## 0.1.1 - 2026-06-21
+
+### 修复
+
+- 修正 Codex Radar 当前预测字段解析，兼容 `prediction.level`、`probability_24h`、`probability_48h` 与 `expected_window`。
+- 修正 Codex 正在运行且尚未关闭时，今日、本周、本月和会话分析无法读取最近用量的问题。
+- Token 活动现在会同时读取本地 session jsonl 与 `logs_2.sqlite` 中的 `response.completed` 完成事件，并按会话、时间与 token 结构去重。
+- 放宽日志来源过滤，兼容 Codex 将完成事件写入 `codex_otel.*` 或 `codex_core.*` span 文本的情况。
+
+### 优化
+
+- 新安装默认开启随 Windows 启动、保持唤醒与强力唤醒。
+- 会话分析会纳入仍在运行的 Codex 会话，不再只依赖已关闭后落盘的 session 文件。
+- Release 包补充 SQLite 运行依赖，确保单文件包可以直接读取本机 Codex 日志。
+
 ## 0.1.0 - 2026-06-18
 
 首次 Windows 发布版本。

@@ -236,10 +236,10 @@ public sealed class CodexBarConfig
     public CodexBarOpenAISettings OpenAI { get; set; } = new();
 
     [JsonPropertyName("keep_awake_enabled")]
-    public bool KeepAwakeEnabled { get; set; } = false;
+    public bool KeepAwakeEnabled { get; set; } = true;
 
     [JsonPropertyName("advanced_keep_awake_enabled")]
-    public bool AdvancedKeepAwakeEnabled { get; set; } = false;
+    public bool AdvancedKeepAwakeEnabled { get; set; } = true;
 
     [JsonPropertyName("advanced_keep_awake_idle_threshold_ms")]
     public int AdvancedKeepAwakeIdleThresholdMs { get; set; } = 120_000;
@@ -257,7 +257,7 @@ public sealed class CodexBarConfig
     public bool AdvancedKeepAwakePauseOnFullscreen { get; set; } = true;
 
     [JsonPropertyName("start_with_windows")]
-    public bool StartWithWindows { get; set; } = false;
+    public bool StartWithWindows { get; set; } = true;
 
     public CodexBarConfig Clone()
     {
