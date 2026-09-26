@@ -977,9 +977,7 @@ public sealed class SettingsForm : AdaptiveForm
             var titlePixels = (compact ? 22 : 28) * scale;
             if (Math.Abs(_title.Font.Size - titlePixels) > .1f)
             {
-                var previous = _title.Font;
                 _title.Font = FluentTheme.TextFontPx(titlePixels, FontStyle.Bold);
-                previous.Dispose();
             }
             _header.RowStyles[0].Height = (compact ? 36 : 48) * scale;
             _header.RowStyles[1].Height = (compact ? 44 : 56) * scale;
