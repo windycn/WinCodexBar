@@ -62,7 +62,7 @@ public sealed class OpenAIUsageService
         account.TokenExpired = false;
         account.LastChecked = DateTimeOffset.UtcNow;
 
-        await RefreshResetCreditsAsync(account, cancellationToken).ConfigureAwait(false);
+        var creditsTask = RefreshResetCreditsAsync(account, cancellationToken);
 
         try
         {
@@ -77,6 +77,7 @@ public sealed class OpenAIUsageService
             // 组织名属于增益信息，失败时静默。
         }
 
+        await creditsTask.ConfigureAwait(false);
         return UsageRefreshOutcome.Updated;
     }
 

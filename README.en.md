@@ -14,7 +14,7 @@ Account/settings files remain in `%USERPROFILE%\.codexbar` (or beneath `CODEXBAR
 
 Single-click the tray icon for quick actions; double-click for the dashboard. Appearance settings offer a quota ring, remaining percentage or classic app icon. Settings also provide manual update checks. Model availability depends on the account and Codex version; existing selections are preserved.
 
-Token costs are estimates, not billing records. The public reset-window summary is attributed to [Codex Radar](https://codexradar.com/); it is not evidence that an individual account has reset. Protected API endpoints are not queried.
+Token costs are estimates, not billing records. The public reset-window summary is attributed to [Codex Radar](https://codexradar.com/); it is not evidence that an individual account has reset. Codex Radar’s protected full API is not queried.
 
 Build using .NET 8 SDK:
 
@@ -27,3 +27,5 @@ dotnet run --project tests/WinCodexBar.WindowsTests -c Release
 Window tests require Windows and use isolated temporary data. Mixed-monitor hot-plug behavior and hardware-specific rendering still need device acceptance testing.
 
 [MIT License](./LICENSE) · [Third-party notices](./THIRD_PARTY_NOTICES.md)
+
+Account quota windows are shown only when supplied by the service. Weekly-only accounts have no five-hour placeholder, and the tray indicator uses weekly usage. Reset-credit counts and individual expiration times are read-only; account details show exact reset dates, seconds, local UTC offsets, and countdowns. There is no redemption action or endpoint.

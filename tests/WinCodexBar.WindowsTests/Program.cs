@@ -51,7 +51,19 @@ internal static class Program
                         Call(settings,"SelectPage",page!); Paint(settings,$"settings-{scale}-{page}.png");
                         Check(!((ScrollableControl)settings.Controls[0]).HorizontalScroll.Visible, $"settings has no horizontal overflow {scale}% {page}");
                         foreach (var button in Descendants(settings).OfType<Button>().Where(b => b.Text is "保存" or "取消" or "配置目录"))
-                            Check(settings.RectangleToScreen(settings.ClientRectangle).Contains(button.RectangleToScreen(button.ClientRectangle)), $"settings footer visible {scale}% {button.Text}");
+                        {
+                            var visible = settings.RectangleToScreen(settings.ClientRectangle).Contains(button.RectangleToScreen(button.ClientRectangle));
+                            if (!visible)
+                            {
+                                Console.WriteLine($"FORM {settings.Bounds} client={settings.ClientRectangle} font={settings.Font.Size} BUTTON {button.Bounds}");
+                                for (Control? ancestor = button.Parent; ancestor is not null; ancestor = ancestor.Parent)
+                                {
+                                    Console.WriteLine($"ANCESTOR {ancestor.GetType().Name} bounds={ancestor.Bounds} min={ancestor.MinimumSize} font={ancestor.Font.Size}");
+                                    if (ancestor is TableLayoutPanel table) Console.WriteLine("COLUMNS " + string.Join(",", table.GetColumnWidths()) + " ROWS " + string.Join(",",table.GetRowHeights()) + " STYLES " + string.Join(",",table.ColumnStyles.Cast<ColumnStyle>().Select(c => c.SizeType + "=" + c.Width)));
+                                }
+                            }
+                            Check(visible, $"settings footer visible {scale}% {button.Text}");
+                        }
                         Check(Screen.FromControl(settings).WorkingArea.Contains(settings.Bounds), $"settings fit {scale}% {size} {page}");
                         foreach (var card in Descendants(settings).OfType<SettingCard>())
                         {
