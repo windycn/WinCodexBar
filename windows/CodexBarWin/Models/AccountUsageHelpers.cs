@@ -30,7 +30,7 @@ public static class AccountUsageHelpers
         ? "用量未提供" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {FormatDisplayPercent(w.UsedPercent, mode)}"));
 
     public static string ResetText(TokenAccount account) => Windows(account).Count == 0
-        ? "等待额度数据" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {FormatResetCountdown(w.ResetAt)}"));
+        ? "等待额度数据" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {ExactTime(w.ResetAt)}"));
 
     public static string AverageText(IEnumerable<TokenAccount> accounts, UsageDisplayMode mode)
     {
@@ -55,7 +55,6 @@ public static class AccountUsageHelpers
         {
             lines.Add($"{(window.Label == "5h" ? "5 小时" : "7 天")}：{FormatDisplayPercent(window.UsedPercent, mode)}（{(mode == UsageDisplayMode.Remaining ? "剩余" : "已用")}）");
             lines.Add("重置时间：" + ExactTime(window.ResetAt));
-            lines.Add("倒计时：" + FormatResetCountdown(window.ResetAt));
             lines.Add("");
         }
         if (Windows(account).Count == 0) lines.Add("额度数据未提供");

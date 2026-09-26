@@ -31,7 +31,7 @@ public sealed record CodexRadarPrediction(
         {
             if (!IsAvailable)
             {
-                return string.Empty;
+                return Level == "loading" ? "重置窗口 · 获取中 · Codex 雷达" : "重置窗口 · 暂不可用 · Codex 雷达";
             }
 
             if (WindowOpen.HasValue)

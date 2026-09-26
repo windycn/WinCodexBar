@@ -32,5 +32,6 @@ public sealed class AccountDetailsForm : AdaptiveForm
         FluentTheme.ApplyButton(close, primary: true);
         root.Controls.Add(close, 0, 2);
         CancelButton = close;
+        Shown += (_, _) => { text.Select(0, 0); close.Focus(); };
     }
 }

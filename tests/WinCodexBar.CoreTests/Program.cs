@@ -42,6 +42,7 @@ try
     OpenAIUsageService.ApplyUsagePayload(weekly, weeklyJson.RootElement);
     Check(AccountUsageHelpers.Windows(weekly).Count == 1 && AccountUsageHelpers.Windows(weekly)[0].Label == "7d", "missing five-hour window hidden and stale data cleared");
     Check(AccountUsageHelpers.UsageText(weekly, UsageDisplayMode.Used) == "7d 0.0%", "real zero usage remains visible");
+    Check(AccountUsageHelpers.ResetText(weekly).Contains(AccountUsageHelpers.ExactTime(weekly.PrimaryResetAt)), "reset summary uses calendar date");
     Check(!AccountUsageHelpers.ResetText(weekly).Contains("5h"), "missing five-hour reset hidden");
     using var primaryWeekly = JsonDocument.Parse("""{"rate_limits":{"primary":{"used_percent":42,"window_minutes":10080},"secondary":null}}""");
     OpenAIUsageService.ApplyUsagePayload(weekly, primaryWeekly.RootElement);
@@ -80,6 +81,7 @@ try
     Check(prediction.WindowOpen == true && prediction.DisplayText.Contains("速蹬窗口开启") && !prediction.DisplayText.Contains("低"), "current window takes precedence over stale probability");
     using var closed = JsonDocument.Parse("{\"window_open\":false,\"prediction\":null}");
     Check(CodexRadarService.Parse(closed.RootElement).DisplayText.Contains("未开启"), "explicit closed window supported without prediction");
+    Check(CodexRadarPrediction.Loading.DisplayText.Contains("获取中") && CodexRadarPrediction.Unavailable.DisplayText.Contains("暂不可用"), "radar state remains visible without data");
     using var empty = JsonDocument.Parse("{}"); Check(!CodexRadarService.Parse(empty.RootElement).IsAvailable, "missing radar data unavailable");
     string Release(string tag, string architecture = "x64", bool preview = false) => JsonSerializer.Serialize(new {
         tag_name = tag, draft = false, prerelease = preview,

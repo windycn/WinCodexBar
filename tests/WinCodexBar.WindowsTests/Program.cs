@@ -159,6 +159,8 @@ internal static class Program
         {
             var watch=Stopwatch.StartNew();
             popup.ShowNearCursor(); watch.Stop(); Console.WriteLine($"Popup show time: {watch.ElapsedMilliseconds} ms");
+            Paint(popup,"popup-unavailable.png");
+            popup.UpdateRadarPrediction(CodexRadarPrediction.Unavailable with { IsAvailable = true, WindowOpen = false });
             Paint(popup,"popup.png");
             Check(Screen.FromControl(popup).WorkingArea.Contains(popup.Bounds),"popup fits work area");
             var hits=((IEnumerable)Field(popup,"_hits")!).Cast<object>().ToArray();

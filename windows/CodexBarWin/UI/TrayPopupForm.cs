@@ -395,11 +395,6 @@ public sealed class TrayPopupForm : Form
 
     private void DrawRadarPrediction(Graphics g, RectangleF rect)
     {
-        if (!_radarPrediction.IsAvailable || string.IsNullOrWhiteSpace(_radarPrediction.DisplayText))
-        {
-            return;
-        }
-
         var hitId = AddHit(
             rect,
             () => OpenUrl("https://codexradar.com/"),
@@ -682,10 +677,10 @@ public sealed class TrayPopupForm : Form
 
         DrawText(g, TrimMiddle(BuildAccountLabel(account), 28), name, FluentTheme.TextPrimary, Rect(54, y + 8, 220, 20));
         DrawPill(g, AccountUsageHelpers.PlanLabel(account), Rect(280, y + 9, 56, 18), PlanColor(account), Color.FromArgb(238, 238, 238), chip);
-        DrawText(g, AccountUsageHelpers.HealthLabel(AccountUsageHelpers.Health(account, _config.OpenAI.WarningThresholdPercent, _config.OpenAI.DangerThresholdPercent)), meta, UsageColor(health), Rect(54, y + 32, 80, 18));
+        DrawText(g, AccountUsageHelpers.HealthLabel(AccountUsageHelpers.Health(account, _config.OpenAI.WarningThresholdPercent, _config.OpenAI.DangerThresholdPercent)), meta, UsageColor(health), Rect(54, y + 30, 80, 14));
         var windows = AccountUsageHelpers.Windows(account);
-        DrawText(g, AccountUsageHelpers.UsageText(account, _config.OpenAI.UsageDisplayMode), meta, UsageColor(health), Rect(140, y + 32, 140, 18));
-        DrawText(g, ResetHint(windows.FirstOrDefault()?.ResetAt), meta, FluentTheme.TextTertiary, Rect(286, y + 32, 50, 18));
+        DrawText(g, AccountUsageHelpers.UsageText(account, _config.OpenAI.UsageDisplayMode), meta, UsageColor(health), Rect(140, y + 30, 196, 14));
+        DrawText(g, "重置：" + ResetDetail(windows.FirstOrDefault()?.ResetAt), meta, FluentTheme.TextTertiary, Rect(54, y + 44, 282, 14));
 
         var refresh = Rect(342, y + 14, 26, 30);
         var refreshId = AddHit(refresh, () => { StartRefreshAnimation(account); _refreshAccount(account); }, "刷新此账号用量", HitStyle.RefreshGlyph);
@@ -884,16 +879,6 @@ public sealed class TrayPopupForm : Form
     private static string BuildAccountLabel(TokenAccount account)
     {
         return !string.IsNullOrWhiteSpace(account.Email) ? account.Email : account.AccountId;
-    }
-
-    private static string ResetHint(DateTimeOffset? reset)
-    {
-        if (reset is null) return "--";
-        var span = reset.Value - DateTimeOffset.Now;
-        if (span.TotalMinutes <= 0) return "可刷新";
-        return span.TotalHours >= 1
-            ? $"{(int)span.TotalHours}时{span.Minutes:D2}分"
-            : $"{Math.Max(1, (int)span.TotalMinutes)}分钟";
     }
 
     private static string ResetDetail(DateTimeOffset? reset)
