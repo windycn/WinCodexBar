@@ -72,7 +72,9 @@ internal static class MicaSupport
             path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
             path.AddArc(rect.Left, rect.Bottom - diameter, diameter, diameter, 90, 90);
             path.CloseFigure();
+            var previous = form.Region;
             form.Region = new System.Drawing.Region(path);
+            previous?.Dispose();
         }
         catch
         {

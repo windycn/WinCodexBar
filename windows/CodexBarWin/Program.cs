@@ -22,7 +22,14 @@ namespace CodexBarWin
                     AppLogService.LogException(exception, "AppDomain unhandled exception");
                 }
             };
-            Application.Run(new CodexBarTrayContext());
+            using var instance = new System.Threading.Mutex(true, "Local\\WinCodexBar-" + System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value, out var created);
+            if (!created)
+            {
+                MessageBox.Show("WinCodexBar 已在运行，请从系统托盘打开。", "WinCodexBar");
+                return;
+            }
+            try { Application.Run(new CodexBarTrayContext()); }
+            finally { instance.ReleaseMutex(); }
         }
     }
 }

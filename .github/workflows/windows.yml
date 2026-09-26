@@ -1,0 +1,33 @@
+name: Windows 构建与回归
+on:
+  push:
+    branches: [main, fix/windows-0.2]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: 核心回归
+        run: dotnet run --project tests/WinCodexBar.CoreTests -c Release
+      - name: Windows 窗口回归
+        run: dotnet run --project tests/WinCodexBar.WindowsTests -c Release
+      - name: 发布三个架构
+        shell: pwsh
+        run: |
+          foreach ($rid in @('win-x64', 'win-x86', 'win-arm64')) {
+            dotnet publish windows/CodexBarWin/CodexBarWin.csproj -c Release -r $rid --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "artifacts/$rid"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-validation-and-packages
+          path: |
+            artifacts/
+            tests/WinCodexBar.WindowsTests/bin/Release/net8.0-windows/screenshots/

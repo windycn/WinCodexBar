@@ -12,7 +12,7 @@ using System.Windows.Forms;
 
 namespace CodexBarWin.UI;
 
-public sealed class CodexBarDashboardForm : Form
+public sealed class CodexBarDashboardForm : AdaptiveForm
 {
     private enum DashboardView
     {
@@ -29,6 +29,7 @@ public sealed class CodexBarDashboardForm : Form
     private readonly Action _importRequested;
     private readonly Action _exportRequested;
     private readonly Action _openSettingsRequested;
+    private readonly Action<TokenAccount>? _deleteAccountRequested;
     private readonly Func<bool> _isKeepAwakeEnabled;
     private readonly Action<bool> _setKeepAwakeEnabled;
     private readonly ToolTip _toolTip = new() { InitialDelay = 320, ReshowDelay = 120, AutoPopDelay = 4000 };
@@ -67,8 +68,10 @@ public sealed class CodexBarDashboardForm : Form
         Action exportRequested,
         Action openSettingsRequested,
         Func<bool> isKeepAwakeEnabled,
-        Action<bool> setKeepAwakeEnabled)
+        Action<bool> setKeepAwakeEnabled,
+        Action<TokenAccount>? deleteAccountRequested = null)
     {
+        _deleteAccountRequested = deleteAccountRequested;
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _refreshCoordinator = refreshCoordinator ?? throw new ArgumentNullException(nameof(refreshCoordinator));
@@ -84,7 +87,7 @@ public sealed class CodexBarDashboardForm : Form
         Font = FluentTheme.TextFontPx(14);
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1120, 860);
+        MinimumSize = new Size(640, 420);
         Size = new Size(1280, 960);
         BackColor = FluentTheme.LayerBackground;
         AppIconProvider.Apply(this);
@@ -161,7 +164,7 @@ public sealed class CodexBarDashboardForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        Controls.Add(root);
+        InstallScrollableContent(root, new Size(960, 680));
 
         root.Controls.Add(BuildHeader(), 0, 0);
         root.Controls.Add(BuildToolbar(), 0, 1);
@@ -237,18 +240,15 @@ public sealed class CodexBarDashboardForm : Form
         };
         titlePanel.Controls.Add(provider, 1, 0);
 
-        var metrics = new FlowLayoutPanel
+        var metrics = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill, BackColor = Color.Transparent, ColumnCount = 4, RowCount = 1,
             Padding = new Padding(0, 8, 0, 0),
         };
-        metrics.Controls.Add(MetricCard("账号", _countLabel, 140));
-        metrics.Controls.Add(MetricCard("当前账号", _activeLabel, 300));
-        metrics.Controls.Add(MetricCard("用量", _usageLabel, 270));
-        metrics.Controls.Add(MetricCard("健康", _healthLabel, 220));
+        foreach (var weight in new[] { 14f, 32f, 30f, 24f }) metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, weight));
+        var cards = new[] { MetricCard("账号", _countLabel, 140), MetricCard("当前账号", _activeLabel, 280),
+            MetricCard("用量", _usageLabel, 270), MetricCard("健康", _healthLabel, 220) };
+        for (var i = 0; i < cards.Length; i++) { cards[i].Dock = DockStyle.Fill; metrics.Controls.Add(cards[i], i, 0); }
         header.Controls.Add(metrics, 0, 1);
 
         return header;
@@ -307,7 +307,7 @@ public sealed class CodexBarDashboardForm : Form
             Padding = new Padding(0, 9, 0, 7),
         };
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
 
         var commands = new FlowLayoutPanel
         {
@@ -687,6 +687,7 @@ public sealed class CodexBarDashboardForm : Form
         var accounts = OrderedAccounts(_registry.Accounts.ToArray()).ToArray();
 
         _accountList.SuspendLayout();
+        foreach (Control old in _accountList.Controls.Cast<Control>().ToArray()) old.Dispose();
         _accountList.Controls.Clear();
         if (accounts.Length == 0)
         {
@@ -696,7 +697,9 @@ public sealed class CodexBarDashboardForm : Form
         {
             foreach (var account in accounts)
             {
-                _accountList.Controls.Add(BuildAccountRow(account, config));
+                var row = BuildAccountRow(account, config);
+                if (IsHandleCreated) { var scale = AppAppearance.ScaleFor(this); row.Scale(new SizeF(scale, scale)); }
+                _accountList.Controls.Add(row);
             }
         }
         _accountList.ResumeLayout();
@@ -779,7 +782,7 @@ public sealed class CodexBarDashboardForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 216));
         row.Controls.Add(layout);
 
         var marker = new Label
@@ -913,6 +916,14 @@ public sealed class CodexBarDashboardForm : Form
             BackColor = Color.Transparent,
             Padding = new Padding(0, 26, 0, 0),
         };
+        if (_deleteAccountRequested is not null)
+        {
+            var delete = new FluentButton();
+            ConfigureButton(delete, "删除", false, 54);
+            delete.ForeColor = FluentTheme.Critical;
+            delete.Click += (_, _) => _deleteAccountRequested(account);
+            panel.Controls.Add(delete);
+        }
         var refresh = new FluentButton();
         ConfigureButton(refresh, "刷新", false, 54);
         _toolTip.SetToolTip(refresh, "刷新此账号");
@@ -988,8 +999,7 @@ public sealed class CodexBarDashboardForm : Form
         }
         finally
         {
-            trigger.Text = oldText;
-            trigger.Enabled = true;
+            if (!trigger.IsDisposed) { trigger.Text = oldText; trigger.Enabled = true; }
         }
     }
 

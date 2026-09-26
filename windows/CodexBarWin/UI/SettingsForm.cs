@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 namespace CodexBarWin.UI;
 
-public sealed class SettingsForm : Form
+public sealed class SettingsForm : AdaptiveForm
 {
     private enum Page
     {
@@ -16,12 +16,14 @@ public sealed class SettingsForm : Form
         Usage,
         Windows,
         Models,
+        Appearance,
     }
 
     private readonly CodexBarConfigStore _configStore;
     private readonly KeepAwakeService _keepAwakeService;
     private readonly Action _openConfigFolder;
     private readonly Action _onSettingsChanged;
+    private readonly Action _checkUpdates;
     private readonly FlowLayoutPanel _sidebar = new();
     private readonly Panel _scrollHost = new();
     private readonly Panel _content = new();
@@ -40,8 +42,10 @@ public sealed class SettingsForm : Form
         CodexBarConfigStore configStore,
         KeepAwakeService keepAwakeService,
         Action openConfigFolder,
-        Action onSettingsChanged)
+        Action onSettingsChanged,
+        Action? checkUpdates = null)
     {
+        _checkUpdates = checkUpdates ?? (() => { });
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _keepAwakeService = keepAwakeService ?? throw new ArgumentNullException(nameof(keepAwakeService));
         _openConfigFolder = openConfigFolder ?? throw new ArgumentNullException(nameof(openConfigFolder));
@@ -55,7 +59,7 @@ public sealed class SettingsForm : Form
         Font = FluentTheme.TextFontPx(14);
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1040, 720);
+        MinimumSize = new Size(640, 420);
         Size = new Size(1180, 780);
         BackColor = FluentTheme.LayerBackground;
         AppIconProvider.Apply(this);
@@ -104,7 +108,7 @@ public sealed class SettingsForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 184));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        Controls.Add(root);
+        InstallScrollableContent(root, new Size(860, 560));
 
         var navCard = new Panel
         {
@@ -125,6 +129,7 @@ public sealed class SettingsForm : Form
         _sidebar.Controls.Add(MakeNavButton(Page.Usage, FluentIcons.Chart, "用量设置"));
         _sidebar.Controls.Add(MakeNavButton(Page.Windows, FluentIcons.Power, "唤醒策略"));
         _sidebar.Controls.Add(MakeNavButton(Page.Models, FluentIcons.Settings, "模型参数"));
+        _sidebar.Controls.Add(MakeNavButton(Page.Appearance, FluentIcons.Home, "外观与缩放"));
 
         var main = new TableLayoutPanel
         {
@@ -250,9 +255,11 @@ public sealed class SettingsForm : Form
         _content.SuspendLayout();
         _scrollHost.AutoScrollPosition = Point.Empty;
         _scrollHost.AutoScrollMinSize = Size.Empty;
+        foreach (Control old in _content.Controls.Cast<Control>().ToArray()) old.Dispose();
         _content.Controls.Clear();
         _content.Location = new Point(0, 0);
-        var useCachedPage = _pageCache.TryGetValue(page, out var cachedPageControls);
+        var useCachedPage = false;
+        Control[]? cachedPageControls = null;
 
         switch (page)
         {
@@ -271,6 +278,11 @@ public sealed class SettingsForm : Form
                 _subtitle.Text = "控制防休眠和空闲保护。";
                 if (!useCachedPage) BuildWindowsPage();
                 break;
+            case Page.Appearance:
+                _title.Text = "外观与缩放";
+                _subtitle.Text = "自动适配显示器，也可手动选择界面大小与托盘样式。";
+                if (!useCachedPage) BuildAppearancePage();
+                break;
             case Page.Models:
                 _title.Text = "模型参数";
                 _subtitle.Text = "配置默认模型与请求参数。";
@@ -284,7 +296,11 @@ public sealed class SettingsForm : Form
         }
         else
         {
-            _pageCache[page] = _content.Controls.Cast<Control>().ToArray();
+            if (IsHandleCreated)
+            {
+                var scale = AppAppearance.ScaleFor(this);
+                foreach (Control card in _content.Controls) card.Scale(new SizeF(scale, scale));
+            }
         }
 
         _content.ResumeLayout(true);
@@ -372,6 +388,8 @@ public sealed class SettingsForm : Form
 
     private void BuildWindowsPage()
     {
+        _content.Controls.Add(MakeCheckCard(FluentIcons.Refresh, "自动检查更新", "启动后与每 6 小时检查正式版；发现更新后提示，不会自行安装。", "自动检查", _draft.AutoCheckUpdates, value => _draft.AutoCheckUpdates = value));
+        _content.Controls.Add(MakeButtonCard(FluentIcons.Info, "版本 " + AppUpdateService.DisplayVersion, "校验安装包，备份账号与设置，然后覆盖程序并重启。", "检查更新", _checkUpdates));
         _content.Controls.Add(MakeCheckCard(
             FluentIcons.Power,
             "保持唤醒",
@@ -438,6 +456,21 @@ public sealed class SettingsForm : Form
             "打开本机配置目录。",
             "打开",
             _openConfigFolder));
+    }
+
+    private void BuildAppearancePage()
+    {
+        var scales = new[] { "跟随系统 DPI（推荐）", "100%", "125%", "150%", "175%", "200%", "250%", "300%" };
+        var scale = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        scale.Items.AddRange(scales);
+        scale.SelectedIndex = _draft.UiScalePercent == 0 ? 0 : Math.Max(0, Array.IndexOf(scales, _draft.UiScalePercent + "%"));
+        scale.SelectedIndexChanged += (_, _) => _draft.UiScalePercent = scale.SelectedIndex == 0 ? 0 : int.Parse(scale.Text.TrimEnd('%'));
+        _content.Controls.Add(MakeCard(FluentIcons.Settings, "界面缩放", "自动模式随显示器 DPI 切换。小屏内容可滚动；保存后立即生效。", scale));
+        var styles = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        styles.Items.AddRange(new object[] { "额度圆环", "剩余百分比", "经典应用图标" });
+        styles.SelectedIndex = _draft.TrayIconStyle switch { "percent" => 1, "classic" => 2, _ => 0 };
+        styles.SelectedIndexChanged += (_, _) => _draft.TrayIconStyle = styles.SelectedIndex switch { 1 => "percent", 2 => "classic", _ => "ring" };
+        _content.Controls.Add(MakeCard(FluentIcons.Info, "托盘样式", "圆环显示 5 小时已用额度；数字显示剩余百分比。悬停查看详情。", styles));
     }
 
     private void BuildModelsPage()
@@ -910,12 +943,14 @@ public sealed class SettingsForm : Form
 
     private void ResizeCards()
     {
-        var width = Math.Max(520, _scrollHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 10);
+        var width = Math.Max((int)(610 * AppAppearance.ScaleFor(this)), _scrollHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 10);
         _content.SuspendLayout();
         _content.Width = width;
         var top = 0;
         foreach (Control control in _content.Controls)
         {
+            control.Width = width;
+            if (control is SettingCard card) card.Reflow();
             control.SetBounds(0, top, width, control.Height);
             top += control.Height + 12;
         }
@@ -931,9 +966,18 @@ public sealed class SettingsForm : Form
             _draft.OpenAI.DangerThresholdPercent = Math.Min(100, _draft.OpenAI.WarningThresholdPercent + 10);
         }
 
+        if (_draft.Global.DefaultModel.StartsWith("gpt-6-astra", StringComparison.OrdinalIgnoreCase)
+            && _draft.Global.ReasoningEffort is "none" or "minimal")
+        {
+            MessageBox.Show(this, "GPT-6 Astra 的推理强度最低为 low，请调整后保存。", "模型参数", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         _draft.OpenAI.EnsurePricingDefaults();
         _configStore.Update(config =>
         {
+            config.UiScalePercent = _draft.UiScalePercent;
+            config.TrayIconStyle = _draft.TrayIconStyle;
+            config.AutoCheckUpdates = _draft.AutoCheckUpdates;
             config.Global.DefaultModel = _draft.Global.DefaultModel;
             config.Global.ReviewModel = _draft.Global.ReviewModel;
             config.Global.ReasoningEffort = _draft.Global.ReasoningEffort;
@@ -963,6 +1007,7 @@ public sealed class SettingsForm : Form
         _keepAwakeService.SetAdvancedEnabled(_draft.AdvancedKeepAwakeEnabled);
         StartupService.SetEnabled(_draft.StartWithWindows);
         _onSettingsChanged();
+        SelectPage(_selectedPage);
         _saveStatusLabel.Text = $"已保存 · {DateTime.Now:HH:mm:ss}";
         _saveButton.Text = "已保存";
         var resetTimer = new System.Windows.Forms.Timer { Interval = 1600 };

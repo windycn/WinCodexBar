@@ -28,10 +28,10 @@ internal sealed class FluentButton : Button
         UseVisualStyleBackColor = false;
         Cursor = Cursors.Hand;
         TextAlign = ContentAlignment.MiddleCenter;
-        TabStop = false;
+        TabStop = true;
     }
 
-    protected override bool ShowFocusCues => false;
+    protected override bool ShowFocusCues => base.ShowFocusCues;
 
     protected override void OnMouseEnter(System.EventArgs e)
     {
@@ -103,6 +103,7 @@ internal sealed class FluentButton : Button
                     | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix;
         TextRenderer.DrawText(g, Text, Font, ClientRectangle, textColor, flags);
+        if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(ClientRectangle, -4, -4));
     }
 
     private Color ResolveFill()

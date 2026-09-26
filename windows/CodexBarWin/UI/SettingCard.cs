@@ -76,28 +76,30 @@ public sealed class SettingCard : Panel
             return;
         }
 
-        var actionWidth = _action?.Width ?? 0;
-        var stackedAction = _action is not null && (Width < 900 && actionWidth > 360);
-        var textWidth = stackedAction
-            ? Math.Max(220, Width - 98)
-            : Math.Max(260, Width - 122 - actionWidth);
-
-        _titleLabel.SetBounds(74, 16, textWidth, 28);
-        var descriptionHeight = stackedAction && _action is not null
-            ? Math.Max(32, Height - _action.Height - 70)
-            : Math.Max(46, Height - 66);
-        _descriptionLabel.SetBounds(74, 48, textWidth, descriptionHeight);
-        LayoutAction();
+        Reflow();
     }
 
-    private void LayoutAction()
+    public void Reflow()
     {
-        if (_action == null) return;
-        var stacked = Width < 900 && _action.Width > 360;
-        var x = stacked ? 74 : Width - 24 - _action.Width;
-        var y = stacked ? Height - _action.Height - 16 : (Height - _action.Height) / 2;
-        _action.Location = new Point(x, y);
+        if (_titleLabel is null || _descriptionLabel is null) return;
+        var scale = AppAppearance.ScaleFor(this);
+        int D(float n) => (int)Math.Round(n * scale);
+        var actionWidth = _action?.Width ?? 0;
+        var stacked = _action is not null && Width < actionWidth + D(330);
+        var requiredHeight = stacked ? D(114) + _action!.Height : D(118);
+        if (Height < requiredHeight) Height = requiredHeight;
+        var textWidth = Math.Max(1, Width - D(98) - (stacked ? 0 : actionWidth + D(24)));
+        _titleLabel.SetBounds(D(74), D(16), textWidth, D(28));
+        _descriptionLabel.SetBounds(D(74), D(48), textWidth, stacked ? D(48) : Math.Max(D(46), Height - D(66)));
+        if (_action is not null)
+        {
+            _action.Location = new Point(stacked ? D(74) : Width - D(24) - actionWidth,
+                stacked ? D(98) : (Height - _action.Height) / 2);
+            _action.BringToFront();
+        }
     }
+
+    private void LayoutAction() => Reflow();
 
     protected override void OnPaint(PaintEventArgs e)
     {

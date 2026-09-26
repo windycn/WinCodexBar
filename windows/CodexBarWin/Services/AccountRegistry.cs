@@ -82,7 +82,7 @@ public class AccountRegistry
             WriteIndented = true,
         };
 
-        File.WriteAllText(CodexPaths.WindowsRegistryPath, JsonSerializer.Serialize(payload, options));
+        AtomicFile.WriteAllText(CodexPaths.WindowsRegistryPath, JsonSerializer.Serialize(payload, options));
     }
 
     public void SetActive(string? accountId)

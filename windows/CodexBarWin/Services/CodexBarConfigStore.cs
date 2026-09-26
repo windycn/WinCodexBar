@@ -40,22 +40,14 @@ public sealed class CodexBarConfigStore
             var root = document.RootElement;
 
             var config = new CodexBarConfig();
-            if (root.TryGetProperty("keep_awake_enabled", out var keepAwakeNew)
-                && keepAwakeNew.ValueKind == JsonValueKind.True)
-            {
-                config.KeepAwakeEnabled = true;
-            }
-            else if (root.TryGetProperty("KeepAwakeEnabled", out var keepAwakeLegacy)
-                     && keepAwakeLegacy.ValueKind == JsonValueKind.True)
-            {
-                config.KeepAwakeEnabled = true;
-            }
-
-            if (root.TryGetProperty("advanced_keep_awake_enabled", out var advancedKeepAwake)
-                && advancedKeepAwake.ValueKind == JsonValueKind.True)
-            {
-                config.AdvancedKeepAwakeEnabled = true;
-            }
+            config.KeepAwakeEnabled = ReadBool(root, "keep_awake_enabled",
+                ReadBool(root, "KeepAwakeEnabled", config.KeepAwakeEnabled));
+            config.AdvancedKeepAwakeEnabled = ReadBool(root, "advanced_keep_awake_enabled", config.AdvancedKeepAwakeEnabled);
+            config.AutoCheckUpdates = ReadBool(root, "auto_check_updates", true);
+            var uiScale = ReadInt(root, "ui_scale_percent", 0);
+            config.UiScalePercent = uiScale is 100 or 125 or 150 or 175 or 200 or 250 or 300 ? uiScale : 0;
+            if (root.TryGetProperty("tray_icon_style", out var trayStyle) && trayStyle.ValueKind == JsonValueKind.String)
+                config.TrayIconStyle = trayStyle.GetString() is "percent" or "classic" ? trayStyle.GetString()! : "ring";
 
             config.AdvancedKeepAwakeIdleThresholdMs = ReadInt(root, "advanced_keep_awake_idle_threshold_ms", config.AdvancedKeepAwakeIdleThresholdMs);
             config.AdvancedKeepAwakeIntervalMs = ReadInt(root, "advanced_keep_awake_interval_ms", config.AdvancedKeepAwakeIntervalMs);
@@ -91,7 +83,7 @@ public sealed class CodexBarConfigStore
             }
 
             // 校验阈值
-            config.OpenAI.AutoRefreshIntervalSeconds = Math.Max(60, config.OpenAI.AutoRefreshIntervalSeconds);
+            config.OpenAI.AutoRefreshIntervalSeconds = Math.Clamp(config.OpenAI.AutoRefreshIntervalSeconds, 60, 86400);
             config.OpenAI.WarningThresholdPercent = ClampPercent(config.OpenAI.WarningThresholdPercent, 70);
             config.OpenAI.DangerThresholdPercent = ClampPercent(config.OpenAI.DangerThresholdPercent, 90);
             config.OpenAI.EnsurePricingDefaults();
@@ -118,7 +110,7 @@ public sealed class CodexBarConfigStore
         CodexPaths.EnsureDirectories();
         Config.OpenAI.EnsurePricingDefaults();
         var text = JsonSerializer.Serialize(Config, WriteOptions);
-        File.WriteAllText(CodexPaths.WindowsSettingsPath, text);
+        AtomicFile.WriteAllText(CodexPaths.WindowsSettingsPath, text);
     }
 
     public void Update(Action<CodexBarConfig> mutate)
@@ -131,6 +123,10 @@ public sealed class CodexBarConfigStore
         mutate(Config);
         Save();
     }
+
+    private static bool ReadBool(JsonElement root, string key, bool fallback) =>
+        root.TryGetProperty(key, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean() : fallback;
 
     private static double ClampPercent(double value, double fallback)
     {

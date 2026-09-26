@@ -19,6 +19,9 @@ internal sealed class FluentToggleSwitch : Control
                  | ControlStyles.OptimizedDoubleBuffer
                  | ControlStyles.ResizeRedraw
                  | ControlStyles.SupportsTransparentBackColor, true);
+        SetStyle(ControlStyles.Selectable, true);
+        TabStop = true;
+        AccessibleRole = AccessibleRole.CheckButton;
         Height = 28;
         Width = 180;
         Cursor = Cursors.Hand;
@@ -45,8 +48,14 @@ internal sealed class FluentToggleSwitch : Control
 
     protected override void OnClick(EventArgs e)
     {
-        Checked = !Checked;
+        if (Enabled) Checked = !Checked;
         base.OnClick(e);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Space) { OnClick(EventArgs.Empty); e.Handled = true; e.SuppressKeyPress = true; }
+        base.OnKeyDown(e);
     }
 
     protected override void OnMouseEnter(EventArgs e)
@@ -67,6 +76,9 @@ internal sealed class FluentToggleSwitch : Control
     {
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        var state = g.Save();
+        var scale = DeviceDpi / 96f;
+        g.ScaleTransform(scale, scale);
         var track = new RectangleF(0.5f, 4.5f, 38, 20);
         using (var path = FluentTheme.RoundedRectanglePath(track, 10))
         using (var fill = new SolidBrush(Checked ? (_hovered ? FluentTheme.AccentHover : FluentTheme.Accent) : Color.FromArgb(232, 232, 232)))
@@ -82,11 +94,12 @@ internal sealed class FluentToggleSwitch : Control
             g.FillEllipse(knob, knobX, 7, 14, 14);
         }
 
+        g.Restore(state);
         TextRenderer.DrawText(
             g,
             Text,
             Font,
-            new Rectangle(48, 0, Math.Max(0, Width - 48), Height),
+            new Rectangle((int)(48 * scale), 0, Math.Max(0, Width - (int)(48 * scale)), Height),
             Enabled ? ForeColor : FluentTheme.TextTertiary,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
