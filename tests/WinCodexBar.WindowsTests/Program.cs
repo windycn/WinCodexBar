@@ -75,13 +75,19 @@ internal static class Program
                 dashboard.Close(); Check(!dashboard.Visible && !dashboard.IsDisposed,"dashboard close hides for reuse");
                 dashboard.Show(); Check(dashboard.Visible,"dashboard reopens");
             }
-            using (var details = new AccountDetailsForm(registry.Accounts[0], UsageDisplayMode.Used))
+            foreach (var detailScale in new[] { 100, 200 })
             {
-                details.Show(); Paint(details, "account-details.png");
+                AppAppearance.ScalePercent = detailScale;
+                using var details = new AccountDetailsForm(registry.Accounts[0], UsageDisplayMode.Used);
+                details.Show(); Paint(details, $"account-details-{detailScale}.png");
+                Check(Screen.FromControl(details).WorkingArea.Contains(details.Bounds), "account details fits " + detailScale);
+                foreach (var button in Descendants(details).OfType<Button>())
+                    Check(details.RectangleToScreen(details.ClientRectangle).Contains(button.RectangleToScreen(button.ClientRectangle)), "details close button visible " + detailScale);
                 Check(Descendants(details).OfType<Button>().All(b => b.Text == "关闭"), "account details has no credit redemption action");
                 Check(Descendants(details).OfType<TextBox>().Single().Text.Contains("2026-10-04"), "account details displays full expiry date");
                 details.Close();
             }
+            AppAppearance.ScalePercent = 100;
             TestPopup(registry);
             TestInstaller(home);
             Console.WriteLine($"{_passed} Windows checks passed");
