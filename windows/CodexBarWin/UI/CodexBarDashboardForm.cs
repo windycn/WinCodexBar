@@ -159,12 +159,12 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             ColumnCount = 1,
             RowCount = 5,
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 164));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        InstallScrollableContent(root, new Size(960, 680));
+        InstallScrollableContent(root, new Size(880, 620));
 
         root.Controls.Add(BuildHeader(), 0, 0);
         root.Controls.Add(BuildToolbar(), 0, 1);
@@ -616,7 +616,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             Padding = new Padding(0, 12, 0, 0),
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 164));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
 
         var note = new Label
@@ -698,7 +698,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             foreach (var account in accounts)
             {
                 var row = BuildAccountRow(account, config);
-                if (IsHandleCreated) { var scale = AppAppearance.ScaleFor(this); row.Scale(new SizeF(scale, scale)); }
+                if (IsHandleCreated) { var scale = AppAppearance.ScaleFor(this); AppAppearance.ScaleTree(row, scale); }
                 _accountList.Controls.Add(row);
             }
         }

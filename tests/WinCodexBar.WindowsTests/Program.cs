@@ -73,7 +73,14 @@ internal static class Program
             TestInstaller(home);
             Console.WriteLine($"{_passed} Windows checks passed");
         }
-        finally { Directory.Delete(home,true); }
+        finally
+        {
+            for (var attempt=0; ; attempt++)
+            {
+                try { Directory.Delete(home,true); break; }
+                catch (Exception ex) when (attempt<20 && ex is IOException or UnauthorizedAccessException) { Thread.Sleep(250); }
+            }
+        }
     }
     private static void TestPopup(AccountRegistry registry)
     {
@@ -127,7 +134,7 @@ internal static class Program
         File.WriteAllText(Path.Combine(target,"unrelated.txt"),"preserve");
         File.WriteAllText(Path.Combine(data,"windows_accounts.json"),"fake-account-data");
         var script=Path.Combine(home,"install.ps1");
-        File.WriteAllText(script,AppUpdateService.BuildInstallScript(source,target,data,int.MaxValue),new System.Text.UTF8Encoding(true));
+        File.WriteAllText(script,AppUpdateService.BuildInstallScript(source,target,data,int.MaxValue).Replace("-WorkingDirectory $target", "-WorkingDirectory $target -Wait"),new System.Text.UTF8Encoding(true));
         var start=new ProcessStartInfo("powershell.exe") {UseShellExecute=false};
         foreach(var arg in new[]{"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",script}) start.ArgumentList.Add(arg);
         using var process=Process.Start(start)!;Check(process.WaitForExit(30000)&&process.ExitCode==0,"installer completes on Windows");
@@ -136,6 +143,16 @@ internal static class Program
         Check(File.ReadAllText(Path.Combine(target,"unrelated.txt"))=="preserve","unrelated installation files preserved");
         Check(Directory.GetFiles(Path.Combine(data,"backups"),"windows_accounts.json",SearchOption.AllDirectories).Length==1,"account data backed up");
         Check(File.ReadAllText(Path.Combine(data,"windows_accounts.json"))=="fake-account-data","account data preserved");
+        File.WriteAllText(Path.Combine(target,"WinCodexBar.exe"),"rollback-original");
+        var failingScript=AppUpdateService.BuildInstallScript(source,target,data,int.MaxValue)
+            .Replace("Copy-Item -LiteralPath $file.FullName -Destination $dest -Force", "Copy-Item -LiteralPath $file.FullName -Destination $dest -Force; throw 'injected replacement failure'")
+            .Replace("[System.Windows.Forms.MessageBox]::Show($message, 'WinCodexBar 更新') | Out-Null", "'failure recorded' | Out-Null");
+        File.WriteAllText(script,failingScript,new System.Text.UTF8Encoding(true));
+        using var failedProcess=Process.Start(start)!;
+        Check(failedProcess.WaitForExit(30000),"rollback script completes");
+        Check(File.ReadAllText(Path.Combine(home,"result.txt")).Contains("更新失败"),"replacement failure reported");
+        Check(File.ReadAllText(Path.Combine(target,"WinCodexBar.exe"))=="rollback-original","replacement failure restores old program");
+        Check(File.ReadAllText(Path.Combine(data,"windows_accounts.json"))=="fake-account-data","rollback preserves account data");
     }
     [StructLayout(LayoutKind.Sequential)] private struct MouseHookData { public int X,Y; public uint MouseData,Flags,Time; public IntPtr Extra; }
 }

@@ -23,6 +23,7 @@ public class AdaptiveForm : Form
         _content = content;
         _viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.Transparent };
         content.Dock = DockStyle.None;
+        content.Margin = Padding.Empty;
         content.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         _viewport.Controls.Add(content);
         Controls.Add(_viewport);
@@ -57,7 +58,7 @@ public class AdaptiveForm : Form
         var factor = AppAppearance.ScaleFor(this) / (DeviceDpi / 96f);
         var relative = factor / _manualFactor;
         _manualFactor = factor;
-        if (Math.Abs(relative - 1f) > 0.001f) Scale(new SizeF(relative, relative));
+        AppAppearance.ScaleTree(this, relative);
         FitToScreen();
         LayoutContent();
         Invalidate(true);

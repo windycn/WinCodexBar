@@ -121,14 +121,15 @@ public sealed class SettingCard : Panel
         g.DrawPath(pen, path);
 
         // Fluent-style setting glyph tile.
-        var tileRect = new RectangleF(18, (Height - 36) / 2f, 36, 36);
+        var scale = AppAppearance.ScaleFor(this);
+        var tileRect = new RectangleF(18 * scale, (Height - 36 * scale) / 2f, 36 * scale, 36 * scale);
         using var tileBrush = new SolidBrush(Color.FromArgb(239, 246, 253));
         using var tilePen = new Pen(Color.FromArgb(218, 232, 246), 1f);
         g.FillEllipse(tileBrush, tileRect);
         g.DrawEllipse(tilePen, tileRect);
 
         var iconRect = new RectangleF(tileRect.Left, tileRect.Top + 0.5f, tileRect.Width, tileRect.Height);
-        using var iconFont = FluentTheme.IconFontPx(18);
+        using var iconFont = FluentTheme.IconFontPx(18 * scale);
         using var iconBrush = new SolidBrush(Color.FromArgb(54, 92, 132));
         using var iconFormat = new StringFormat
         {

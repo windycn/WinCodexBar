@@ -77,7 +77,7 @@ internal sealed class FluentToggleSwitch : Control
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         var state = g.Save();
-        var scale = DeviceDpi / 96f;
+        var scale = AppAppearance.ScaleFor(this);
         g.ScaleTransform(scale, scale);
         var track = new RectangleF(0.5f, 4.5f, 38, 20);
         using (var path = FluentTheme.RoundedRectanglePath(track, 10))

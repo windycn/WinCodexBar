@@ -95,7 +95,7 @@ public sealed class SettingsForm : AdaptiveForm
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 184));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        InstallScrollableContent(root, new Size(860, 560));
+        InstallScrollableContent(root, new Size(820, 480));
 
         var navCard = new Panel
         {
@@ -278,7 +278,7 @@ public sealed class SettingsForm : AdaptiveForm
         if (IsHandleCreated)
         {
             var scale = AppAppearance.ScaleFor(this);
-            foreach (Control card in _content.Controls) card.Scale(new SizeF(scale, scale));
+            foreach (Control card in _content.Controls) AppAppearance.ScaleTree(card, scale);
         }
 
         _content.ResumeLayout(true);

@@ -881,7 +881,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
                 return;
             }
             _popupForm?.Close();
-            var owner = (IWin32Window?)_settingsForm ?? _dashboardForm;
+            IWin32Window? owner = _settingsForm is { IsDisposed: false, Visible: true } ? _settingsForm : _dashboardForm is { IsDisposed: false, Visible: true } ? _dashboardForm : null;
             using var confirm = new ConfirmActionDialog("发现新版本 " + update.Version,
                 "将下载并校验安装包，备份账号和设置后更新并重启。不会删除 Codex 会话。", "更新并重启");
             if ((owner is null ? confirm.ShowDialog() : confirm.ShowDialog(owner)) != DialogResult.OK) return;
