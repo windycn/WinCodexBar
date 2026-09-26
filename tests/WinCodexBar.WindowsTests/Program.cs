@@ -66,7 +66,7 @@ internal static class Program
             }
             AppAppearance.ScalePercent = 100;
             var registry = new AccountRegistry();
-            for (var i=0;i<6;i++) registry.UpsertAccount(new TokenAccount { AccountId="fake-"+i, Email=$"person-{i}@example.test" },i==0);
+            for (var i=0;i<6;i++) registry.UpsertAccount(new TokenAccount { AccountId="fake-"+i, Email=$"person-{i}@example.test", PrimaryWindowAvailable=i!=0, SecondaryWindowAvailable=true, PrimaryUsedPercent=12, SecondaryUsedPercent=42, SecondaryLimitWindowSeconds=604800 },i==0);
             using (var dashboard = new CodexBarDashboardForm(registry,store,new UsageRefreshCoordinator(new OpenAIUsageService(),new OpenAIOAuthRefreshService(),registry),_=>{},()=>{},()=>{},()=>{},()=>{},()=>false,_=>{},_=>{}))
             {
                 dashboard.Show(); dashboard.Size=new Size(960,680); dashboard.ApplyAppearance(); Paint(dashboard,"dashboard.png");

@@ -31,6 +31,12 @@ public class TokenAccount
     [JsonPropertyName("plan_type")]
     public string PlanType { get; set; } = "free";
 
+    [JsonPropertyName("primary_window_available")]
+    public bool? PrimaryWindowAvailable { get; set; }
+
+    [JsonPropertyName("secondary_window_available")]
+    public bool? SecondaryWindowAvailable { get; set; }
+
     [JsonPropertyName("primary_used_percent")]
     public double PrimaryUsedPercent { get; set; }
 

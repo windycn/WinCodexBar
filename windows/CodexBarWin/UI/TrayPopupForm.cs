@@ -509,23 +509,22 @@ public sealed class TrayPopupForm : Form
             return;
         }
 
-        var fiveHour = Clamp(active.PrimaryUsedPercent);
-        var sevenDay = Clamp(active.SecondaryUsedPercent);
+        var windows = AccountUsageHelpers.Windows(active);
         var modeLabel = _config.OpenAI.UsageDisplayMode == UsageDisplayMode.Remaining ? "剩余" : "已用";
-        var fiveDisplay = AccountUsageHelpers.DisplayPercent(fiveHour, _config.OpenAI.UsageDisplayMode);
-        var sevenDisplay = AccountUsageHelpers.DisplayPercent(sevenDay, _config.OpenAI.UsageDisplayMode);
         var planLabel = AccountUsageHelpers.PlanLabel(active);
         DrawPill(g, "OpenAI", Rect(28, 111, 58, 22), FluentTheme.Accent, Color.FromArgb(229, 240, 252), small);
         DrawText(g, $"{planLabel} 订阅", strong, FluentTheme.TextPrimary, Rect(94, 110, 110, 24));
-        DrawText(g, $"5小时 {modeLabel} {fiveDisplay:F1}%   ·   7天 {modeLabel} {sevenDisplay:F1}%", body, FluentTheme.TextSecondary, Rect(190, 112, 206, 22), right: true);
-        DrawText(g, $"5h {ResetDetail(active.PrimaryResetAt)}", small, FluentTheme.TextTertiary, Rect(28, 136, 180, 18));
-        DrawText(g, $"7d {ResetDetail(active.SecondaryResetAt)}", small, FluentTheme.TextTertiary, Rect(216, 136, 180, 18));
+        DrawText(g, modeLabel + " " + AccountUsageHelpers.UsageText(active, _config.OpenAI.UsageDisplayMode), body, FluentTheme.TextSecondary, Rect(190, 112, 206, 22), right: true);
         DrawTokenUsageStrip(g, Rect(28, 156, 368, 22));
-
-        DrawUsageBar(g, Rect(28, 188, 176, 6), fiveHour);
-        DrawUsageBar(g, Rect(220, 188, 176, 6), sevenDay);
-        DrawText(g, "5小时", small, FluentTheme.TextTertiary, Rect(28, 196, 60, 14));
-        DrawText(g, "7天", small, FluentTheme.TextTertiary, Rect(220, 196, 60, 14));
+        for (var i = 0; i < windows.Count; i++)
+        {
+            var window = windows[i];
+            var width = windows.Count == 1 ? 368 : 176;
+            var left = 28 + i * 192;
+            DrawText(g, window.Label + " " + ResetDetail(window.ResetAt), small, FluentTheme.TextTertiary, Rect(left, 136, width, 18));
+            DrawUsageBar(g, Rect(left, 188, width, 6), window.UsedPercent);
+            DrawText(g, window.Label == "5h" ? "5小时" : "7天", small, FluentTheme.TextTertiary, Rect(left, 196, width, 14));
+        }
     }
 
     private void DrawTokenUsageStrip(Graphics g, RectangleF rect)
@@ -681,12 +680,9 @@ public sealed class TrayPopupForm : Form
         DrawText(g, TrimMiddle(BuildAccountLabel(account), 28), name, FluentTheme.TextPrimary, Rect(54, y + 8, 220, 20));
         DrawPill(g, AccountUsageHelpers.PlanLabel(account), Rect(280, y + 9, 56, 18), PlanColor(account), Color.FromArgb(238, 238, 238), chip);
         DrawText(g, AccountUsageHelpers.HealthLabel(AccountUsageHelpers.Health(account, _config.OpenAI.WarningThresholdPercent, _config.OpenAI.DangerThresholdPercent)), meta, UsageColor(health), Rect(54, y + 32, 80, 18));
-        var fiveText = AccountUsageHelpers.DisplayPercent(fiveHour, _config.OpenAI.UsageDisplayMode);
-        var sevenText = AccountUsageHelpers.DisplayPercent(sevenDay, _config.OpenAI.UsageDisplayMode);
-        var prefix = _config.OpenAI.UsageDisplayMode == UsageDisplayMode.Remaining ? "剩" : "用";
-        DrawText(g, $"5h{prefix} {fiveText:F0}%", meta, UsageColor(fiveHour), Rect(140, y + 32, 70, 18));
-        DrawText(g, $"7d{prefix} {sevenText:F0}%", meta, UsageColor(sevenDay), Rect(212, y + 32, 70, 18));
-        DrawText(g, ResetHint(account.PrimaryResetAt), meta, FluentTheme.TextTertiary, Rect(286, y + 32, 50, 18));
+        var windows = AccountUsageHelpers.Windows(account);
+        DrawText(g, AccountUsageHelpers.UsageText(account, _config.OpenAI.UsageDisplayMode), meta, UsageColor(health), Rect(140, y + 32, 140, 18));
+        DrawText(g, ResetHint(windows.FirstOrDefault()?.ResetAt), meta, FluentTheme.TextTertiary, Rect(286, y + 32, 50, 18));
 
         var refresh = Rect(342, y + 14, 26, 30);
         var refreshId = AddHit(refresh, () => { StartRefreshAnimation(account); _refreshAccount(account); }, "刷新此账号用量", HitStyle.RefreshGlyph);
@@ -879,7 +875,7 @@ public sealed class TrayPopupForm : Form
 
     private static double HealthValue(TokenAccount account)
     {
-        return Math.Max(Clamp(account.PrimaryUsedPercent), Clamp(account.SecondaryUsedPercent));
+        return AccountUsageHelpers.MaxUsage(account);
     }
 
     private static string BuildAccountLabel(TokenAccount account)

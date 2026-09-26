@@ -875,7 +875,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
         panel.Controls.Add(new Label
         {
-            Text = $"5h {AccountUsageHelpers.FormatDisplayPercent(account.PrimaryUsedPercent, config.OpenAI.UsageDisplayMode)}   ·   7d {AccountUsageHelpers.FormatDisplayPercent(account.SecondaryUsedPercent, config.OpenAI.UsageDisplayMode)}",
+            Text = AccountUsageHelpers.UsageText(account, config.OpenAI.UsageDisplayMode),
             Dock = DockStyle.Fill,
             Font = FluentTheme.TextFontPx(16, FontStyle.Bold),
             ForeColor = FluentTheme.TextPrimary,
@@ -885,7 +885,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         }, 0, 0);
         panel.Controls.Add(new Label
         {
-            Text = $"重置 5h {AccountUsageHelpers.FormatResetCountdown(account.PrimaryResetAt)} · 7d {AccountUsageHelpers.FormatResetCountdown(account.SecondaryResetAt)}",
+            Text = "重置 " + AccountUsageHelpers.ResetText(account),
             Dock = DockStyle.Fill,
             Font = FluentTheme.TextFontPx(13),
             ForeColor = FluentTheme.TextSecondary,
@@ -1038,9 +1038,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             return "暂无账号";
         }
 
-        var primary = accounts.Select(a => AccountUsageHelpers.Clamp(a.PrimaryUsedPercent)).DefaultIfEmpty(0).Average();
-        var secondary = accounts.Select(a => AccountUsageHelpers.Clamp(a.SecondaryUsedPercent)).DefaultIfEmpty(0).Average();
-        return $"5h {AccountUsageHelpers.DisplayPercent(primary, config.OpenAI.UsageDisplayMode):F1}% · 7d {AccountUsageHelpers.DisplayPercent(secondary, config.OpenAI.UsageDisplayMode):F1}%";
+        return AccountUsageHelpers.AverageText(accounts, config.OpenAI.UsageDisplayMode);
     }
 
     private static string LatestRefreshNote(IReadOnlyCollection<TokenAccount> accounts)

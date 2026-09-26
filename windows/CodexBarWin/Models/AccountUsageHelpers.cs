@@ -6,8 +6,39 @@ namespace CodexBarWin.Models;
 /// <summary>
 /// 账号用量相关的纯逻辑计算，集中在这里方便测试和被多个 UI 复用。
 /// </summary>
+public sealed record AccountUsageWindow(string Label, double UsedPercent, DateTimeOffset? ResetAt);
+
 public static class AccountUsageHelpers
 {
+    public static IReadOnlyList<AccountUsageWindow> Windows(TokenAccount account)
+    {
+        var windows = new List<AccountUsageWindow>();
+        void Add(bool? available, double used, DateTimeOffset? reset, int? seconds, string fallback)
+        {
+            // 旧数据没有 available 字段时，只接受明确存在的窗口信息；未知不等于 0%。
+            if (!(available ?? (reset.HasValue || seconds.HasValue || used > 0)) || !HasUsageValue(used)) return;
+            var label = seconds == 604800 ? "7d" : seconds == 18000 ? "5h" : fallback;
+            windows.RemoveAll(w => w.Label == label);
+            windows.Add(new(label, Clamp(used), reset));
+        }
+        Add(account.PrimaryWindowAvailable, account.PrimaryUsedPercent, account.PrimaryResetAt, account.PrimaryLimitWindowSeconds, "5h");
+        Add(account.SecondaryWindowAvailable, account.SecondaryUsedPercent, account.SecondaryResetAt, account.SecondaryLimitWindowSeconds, "7d");
+        return windows.OrderBy(w => w.Label == "5h" ? 0 : 1).ToArray();
+    }
+
+    public static string UsageText(TokenAccount account, UsageDisplayMode mode) => Windows(account).Count == 0
+        ? "用量未提供" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {FormatDisplayPercent(w.UsedPercent, mode)}"));
+
+    public static string ResetText(TokenAccount account) => Windows(account).Count == 0
+        ? "等待额度数据" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {FormatResetCountdown(w.ResetAt)}"));
+
+    public static string AverageText(IEnumerable<TokenAccount> accounts, UsageDisplayMode mode)
+    {
+        var groups = accounts.SelectMany(Windows).GroupBy(w => w.Label).OrderBy(g => g.Key == "5h" ? 0 : 1);
+        var text = string.Join(" · ", groups.Select(g => $"{g.Key} {FormatDisplayPercent(g.Average(w => w.UsedPercent), mode)}"));
+        return text.Length == 0 ? "用量未提供" : text;
+    }
+
     public static double Clamp(double value)
     {
         return double.IsFinite(value) ? Math.Clamp(value, 0, 100) : 0;
@@ -20,7 +51,7 @@ public static class AccountUsageHelpers
 
     public static double MaxUsage(TokenAccount account)
     {
-        return Math.Max(Clamp(account.PrimaryUsedPercent), Clamp(account.SecondaryUsedPercent));
+        return Windows(account).Select(w => w.UsedPercent).DefaultIfEmpty(0).Max();
     }
 
     public static AccountHealthStatus Health(
@@ -54,7 +85,7 @@ public static class AccountUsageHelpers
             return AccountHealthStatus.Warning;
         }
 
-        if (account.LastChecked is null)
+        if (account.LastChecked is null || Windows(account).Count == 0)
         {
             return AccountHealthStatus.Unknown;
         }

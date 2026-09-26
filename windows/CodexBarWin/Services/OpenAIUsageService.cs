@@ -103,6 +103,27 @@ public sealed class OpenAIUsageService
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
             var root = document.RootElement;
 
+            ApplyUsagePayload(account, root);
+
+            return UsageRefreshOutcome.Updated;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return UsageRefreshOutcome.Failed;
+        }
+    }
+
+    public static void ApplyUsagePayload(TokenAccount account, JsonElement root)
+    {
+        account.PrimaryWindowAvailable = false;
+        account.SecondaryWindowAvailable = false;
+        account.PrimaryUsedPercent = account.SecondaryUsedPercent = 0;
+        account.PrimaryResetAt = account.SecondaryResetAt = null;
+        account.PrimaryLimitWindowSeconds = account.SecondaryLimitWindowSeconds = null;
             if (root.TryGetProperty("plan_type", out var planNode) && planNode.ValueKind == JsonValueKind.String)
             {
                 var plan = planNode.GetString();
@@ -124,16 +145,6 @@ public sealed class OpenAIUsageService
                 ApplyCodexWindow(rateLimits, "secondary", primary: false, account);
             }
 
-            return UsageRefreshOutcome.Updated;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return UsageRefreshOutcome.Failed;
-        }
     }
 
     private async Task<string?> FetchOrgNameAsync(TokenAccount account, CancellationToken cancellationToken)
@@ -207,14 +218,16 @@ public sealed class OpenAIUsageService
         var resetAt = ReadUnixTime(window, "reset_at") ?? ReadResetAfter(window, "reset_after_seconds");
         var windowSeconds = ReadInt(window, "limit_window_seconds");
 
-        if (used is not null)
+        if (used is not null && double.IsFinite(used.Value) && used.Value >= 0)
         {
             if (primary)
             {
+                account.PrimaryWindowAvailable = true;
                 account.PrimaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
             else
             {
+                account.SecondaryWindowAvailable = true;
                 account.SecondaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
         }
@@ -248,14 +261,16 @@ public sealed class OpenAIUsageService
             windowSeconds = minutes * 60;
         }
 
-        if (used is not null)
+        if (used is not null && double.IsFinite(used.Value) && used.Value >= 0)
         {
             if (primary)
             {
+                account.PrimaryWindowAvailable = true;
                 account.PrimaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
             else
             {
+                account.SecondaryWindowAvailable = true;
                 account.SecondaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
         }

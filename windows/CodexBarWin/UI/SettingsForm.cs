@@ -471,7 +471,7 @@ public sealed class SettingsForm : AdaptiveForm
         styles.Items.AddRange(new object[] { "额度圆环", "剩余百分比", "经典应用图标" });
         styles.SelectedIndex = _draft.TrayIconStyle switch { "percent" => 1, "classic" => 2, _ => 0 };
         styles.SelectedIndexChanged += (_, _) => _draft.TrayIconStyle = styles.SelectedIndex switch { 1 => "percent", 2 => "classic", _ => "ring" };
-        _content.Controls.Add(MakeCard(FluentIcons.Info, "托盘样式", "圆环显示 5 小时已用额度；数字显示剩余百分比。悬停查看详情。", styles));
+        _content.Controls.Add(MakeCard(FluentIcons.Info, "托盘样式", "优先显示 5 小时额度；没有时显示 7 天额度。圆环为已用，数字为剩余。", styles));
     }
 
     private void BuildModelsPage()

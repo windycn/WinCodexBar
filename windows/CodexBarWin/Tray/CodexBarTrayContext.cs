@@ -187,7 +187,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         menu.Items.Add(CreateDisabledItem("WinCodexBar", "app"));
         menu.Items.Add(CreateDisabledItem(active is null ? "当前未激活账号" : $"当前：{TrimMiddle(BuildAccountLabel(active), 42)}", "star"));
-        menu.Items.Add(CreateDisabledItem($"账号 {_registry.Accounts.Count} · 主池 {FormatShortUsage(primaryAvg)} · 次池 {FormatShortUsage(secondaryAvg)}", "chart"));
+        menu.Items.Add(CreateDisabledItem($"账号 {_registry.Accounts.Count} · {AccountUsageHelpers.AverageText(_registry.Accounts, _configStore.Config.OpenAI.UsageDisplayMode)}", "chart"));
         menu.Items.Add(new ToolStripSeparator());
 
         if (_registry.Accounts.Count == 0)
@@ -205,7 +205,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             foreach (var account in accountsToShow)
             {
                 var isActive = string.Equals(_registry.ActiveAccountId, account.AccountId, StringComparison.Ordinal);
-                var text = $"{(isActive ? "✓ " : "  ")}{TrimMiddle(BuildAccountLabel(account), 38)}    {FormatShortUsage(account.PrimaryUsedPercent)} / {FormatShortUsage(account.SecondaryUsedPercent)}";
+                var text = $"{(isActive ? "✓ " : "  ")}{TrimMiddle(BuildAccountLabel(account), 38)}    {AccountUsageHelpers.UsageText(account, _configStore.Config.OpenAI.UsageDisplayMode)}";
                 var item = CreateActionItem(text, isActive ? "healthy" : "app", () => ActivateAccount(account));
                 item.Font = isActive ? new Font(TrayFont, FontStyle.Bold) : TrayFont;
                 item.ToolTipText = BuildUsageTooltip(account);
@@ -1337,7 +1337,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         var mode = _configStore.Config.OpenAI.UsageDisplayMode;
         var label = mode == UsageDisplayMode.Remaining ? "剩余" : "已用";
-        var text = $"{label} · 5h {AccountUsageHelpers.FormatDisplayPercent(active.PrimaryUsedPercent, mode)} · 7d {AccountUsageHelpers.FormatDisplayPercent(active.SecondaryUsedPercent, mode)}";
+        var text = $"{label} · {AccountUsageHelpers.UsageText(active, mode)}";
         return text.Length <= 63 ? text : text[..63];
     }
 
@@ -1420,11 +1420,12 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         if (active is not null)
         {
-            return (active.PrimaryUsedPercent, active.SecondaryUsedPercent, true);
+            var windows = AccountUsageHelpers.Windows(active);
+            return (windows.FirstOrDefault()?.UsedPercent, windows.FirstOrDefault(w => w.Label == "7d")?.UsedPercent, true);
         }
 
         var (primaryAvg, secondaryAvg, _, _, _, _) = CalculateUsageStats(_registry.Accounts);
-        return (primaryAvg, secondaryAvg, false);
+        return (primaryAvg ?? secondaryAvg, secondaryAvg, false);
     }
 
     private static string BuildAccountLabel(TokenAccount account)
@@ -1443,15 +1444,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private static string BuildUsageText(TokenAccount account)
     {
-        var primary = NormalizeUsagePercent(account.PrimaryUsedPercent, "P");
-        var secondary = NormalizeUsagePercent(account.SecondaryUsedPercent, "S");
-
-        if (primary.hasValue == false && secondary.hasValue == false)
-        {
-            return "用量: 未统计";
-        }
-
-        return $"P:{BuildUsageBar(primary.percent)} {primary.valueText} | S:{BuildUsageBar(secondary.percent)} {secondary.valueText}";
+        return AccountUsageHelpers.UsageText(account, UsageDisplayMode.Used);
     }
 
     private static string BuildUsageBar(double? value, int width = 8)
@@ -1500,8 +1493,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             $"OpenAI ID: {account.OpenAIAccountId}",
             $"计划: {account.PlanType}",
             $"邮箱: {account.Email}",
-            $"主池: {(HasUsageValue(account.PrimaryUsedPercent) ? ClampUsage(account.PrimaryUsedPercent).ToString("F1", CultureInfo.InvariantCulture) + "%" : "--")}",
-            $"次池: {(HasUsageValue(account.SecondaryUsedPercent) ? ClampUsage(account.SecondaryUsedPercent).ToString("F1", CultureInfo.InvariantCulture) + "%" : "--")}",
+            AccountUsageHelpers.UsageText(account, UsageDisplayMode.Used),
             $"过期: {usedAt}",
         };
 
@@ -1511,12 +1503,12 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private static (double? avgPrimary, double? avgSecondary, double? minPrimary, double? minSecondary, double? maxPrimary, double? maxSecondary) CalculateUsageStats(IReadOnlyList<TokenAccount> accounts)
     {
         var primaryValues = accounts
-            .Select(a => a.PrimaryUsedPercent)
+            .SelectMany(AccountUsageHelpers.Windows).Where(w => w.Label == "5h").Select(w => w.UsedPercent)
             .Where(HasUsageValue)
             .Select(ClampUsage)
             .ToArray();
         var secondaryValues = accounts
-            .Select(a => a.SecondaryUsedPercent)
+            .SelectMany(AccountUsageHelpers.Windows).Where(w => w.Label == "7d").Select(w => w.UsedPercent)
             .Where(HasUsageValue)
             .Select(ClampUsage)
             .ToArray();
@@ -1680,22 +1672,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private static string BuildUsageTooltip(TokenAccount account)
     {
-        return string.Join(Environment.NewLine, new[]
-        {
-            $"5小时：{FormatUsagePercent(account.PrimaryUsedPercent)}",
-            $"7天：{FormatUsagePercent(account.SecondaryUsedPercent)}",
-            $"5小时重置：{FormatReset(account.PrimaryResetAt)}",
-            $"7天重置：{FormatReset(account.SecondaryResetAt)}",
-        });
-        /*
-        return string.Join(Environment.NewLine, new[]
-        {
-            $"主池：已用 {FormatUsagePercent(account.PrimaryUsedPercent)} · 剩余 {FormatRemainingPercent(account.PrimaryUsedPercent)}",
-            $"次池：已用 {FormatUsagePercent(account.SecondaryUsedPercent)} · 剩余 {FormatRemainingPercent(account.SecondaryUsedPercent)}",
-            $"主池重置：{FormatReset(account.PrimaryResetAt)}",
-            $"次池重置：{FormatReset(account.SecondaryResetAt)}",
-        });
-        */
+        return AccountUsageHelpers.UsageText(account, UsageDisplayMode.Used) + Environment.NewLine + "重置 " + AccountUsageHelpers.ResetText(account);
     }
 
     private static string FormatUsagePercent(double value)
