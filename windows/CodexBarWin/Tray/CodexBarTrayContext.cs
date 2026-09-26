@@ -21,10 +21,10 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private static readonly System.Collections.Generic.Dictionary<string, Image> TrayIconCache = new();
     private const int TrayMenuWidth = 480;
     private const int TrayVisibleAccountLimit = 8;
-    private static readonly Font TrayFont = new("Microsoft YaHei UI", 9f, FontStyle.Regular);
-    private static readonly Font TraySmallFont = new("Microsoft YaHei UI", 8.4f, FontStyle.Regular);
-    private static readonly Font TrayTinyFont = new("Microsoft YaHei UI", 8f, FontStyle.Regular);
-    private static readonly Font TrayTitleFont = new("Microsoft YaHei UI", 10.4f, FontStyle.Bold);
+    private static readonly Font TrayFont = FluentTheme.TextFontPx(12);
+    private static readonly Font TraySmallFont = FluentTheme.TextFontPx(11.2f);
+    private static readonly Font TrayTinyFont = FluentTheme.TextFontPx(10.7f);
+    private static readonly Font TrayTitleFont = FluentTheme.TextFontPx(14, FontStyle.Bold);
     private static readonly Font TrayMonoFont = new("Consolas", 8.2f, FontStyle.Regular);
     private static readonly Color TrayMenuBack = Color.FromArgb(248, 250, 252);
     private static readonly Color TrayCardBack = Color.FromArgb(255, 255, 255);
@@ -52,9 +52,11 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _autoRefreshTimer;
     private TrayPopupForm? _popupForm;
     private SettingsForm? _settingsForm;
-    private readonly System.Windows.Forms.Timer _trayClickTimer = new();
     private long _lastOutsideDismiss;
     private TokenUsageSummary _popupTokenSummary;
+    private Task<TokenUsageSummary>? _popupScanTask;
+    private DateTimeOffset _popupScannedAt;
+    private string? _lastTrayIconKey;
     private readonly AppUpdateService _updateService = new();
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 30000 };
     private bool _updateBusy;
@@ -96,8 +98,6 @@ public sealed class CodexBarTrayContext : ApplicationContext
         ApplyGatewayMode();
         SyncActiveIfPossible();
         _ = RefreshUsageInBackgroundAsync(includeInactiveStale: true);
-        _trayClickTimer.Interval = SystemInformation.DoubleClickTime;
-        _trayClickTimer.Tick += (_, _) => { _trayClickTimer.Stop(); ToggleTrayPopup(); };
         _updateTimer.Tick += async (_, _) =>
         {
             _updateTimer.Interval = 6 * 60 * 60 * 1000;
@@ -109,7 +109,6 @@ public sealed class CodexBarTrayContext : ApplicationContext
         _notifyIcon.MouseDoubleClick += (_, e) =>
         {
             if (e.Button != MouseButtons.Left) return;
-            _trayClickTimer.Stop();
             OpenDashboard();
         };
     }
@@ -123,7 +122,6 @@ public sealed class CodexBarTrayContext : ApplicationContext
             _keepAwakeService.ClearForProcessExit();
             _autoRefreshTimer.Stop();
             _autoRefreshTimer.Dispose();
-            _trayClickTimer.Dispose();
             _popupForm?.Dispose();
             _settingsForm?.Dispose();
             _notifyIcon.Visible = false;
@@ -162,7 +160,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private void RefreshDashboardIfCreated()
     {
-        if (_dashboardForm is { IsDisposed: false })
+        if (_dashboardForm is { IsDisposed: false, Visible: true })
         {
             _dashboardForm.RefreshData();
         }
@@ -1057,8 +1055,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
         if (e.Button != MouseButtons.Left) return;
         // 全局钩子在 MouseDown 收起弹窗，随后到达的托盘 MouseClick 不应重新打开。
         if (Environment.TickCount64 - _lastOutsideDismiss < SystemInformation.DoubleClickTime) return;
-        _trayClickTimer.Stop();
-        _trayClickTimer.Start();
+        ToggleTrayPopup();
     }
 
     private void ToggleTrayPopup()
@@ -1107,11 +1104,15 @@ public sealed class CodexBarTrayContext : ApplicationContext
     {
         try
         {
-            var summary = await Task.Run(TokenUsageScanService.Scan);
+            if (DateTimeOffset.UtcNow - _popupScannedAt < TimeSpan.FromSeconds(30)) return;
+            _popupScanTask ??= Task.Run(TokenUsageScanService.Scan);
+            var summary = await _popupScanTask;
+            _popupScanTask = null;
+            _popupScannedAt = DateTimeOffset.UtcNow;
             _popupTokenSummary = summary;
             if (!popup.IsDisposed) popup.UpdateSnapshot(_registry.ActiveAccountId, summary, _configStore.Config, _registry.Accounts);
         }
-        catch (Exception ex) { AppLogService.LogException(ex, "扫描托盘 Token 用量"); }
+        catch (Exception ex) { _popupScanTask = null; AppLogService.LogException(ex, "扫描托盘 Token 用量"); }
     }
 
     private async Task RefreshCodexRadarForPopupAsync()
@@ -1585,8 +1586,12 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private void UpdateTrayIcon()
     {
+        var usage = ResolveTrayUsage();
+        var key = $"{_configStore.Config.TrayIconStyle}:{usage.primary:F0}:{usage.hasActive}";
+        if (_lastTrayIconKey == key) return;
+        _lastTrayIconKey = key;
         var previous = _notifyIcon.Icon;
-        _notifyIcon.Icon = CreateTrayIcon(ResolveTrayUsage());
+        _notifyIcon.Icon = CreateTrayIcon(usage);
         previous?.Dispose();
     }
 

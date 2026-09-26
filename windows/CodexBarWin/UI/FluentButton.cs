@@ -10,6 +10,8 @@ internal sealed class FluentButton : Button
     private bool _pressed;
 
     public bool Primary { get; set; }
+    public string? IconGlyph { get; set; }
+    public bool NavigationSelected { get; set; }
 
     public int CornerRadius { get; set; } = 6;
 
@@ -98,11 +100,26 @@ internal sealed class FluentButton : Button
         var textColor = Enabled
             ? Primary ? FluentTheme.TextOnAccent : ForeColor
             : FluentTheme.TextTertiary;
-        var flags = TextFormatFlags.HorizontalCenter
+        var textBounds = ClientRectangle;
+        var alignment = TextAlign == ContentAlignment.MiddleLeft ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter;
+        if (!string.IsNullOrEmpty(IconGlyph))
+        {
+            var scale = AppAppearance.ScaleFor(this);
+            using var iconFont = FluentTheme.IconFontPx(20 * scale);
+            TextRenderer.DrawText(g, IconGlyph, iconFont, new Rectangle((int)(12 * scale), 0, (int)(24 * scale), Height), textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            textBounds = new Rectangle((int)(44 * scale), 0, Math.Max(1, Width - (int)(52 * scale)), Height);
+        }
+        if (NavigationSelected)
+        {
+            using var accent = new SolidBrush(FluentTheme.Accent);
+            var scale = AppAppearance.ScaleFor(this);
+            g.FillRectangle(accent, 0, Height * .28f, 3 * scale, Height * .44f);
+        }
+        var flags = alignment
                     | TextFormatFlags.VerticalCenter
                     | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix;
-        TextRenderer.DrawText(g, Text, Font, ClientRectangle, textColor, flags);
+        TextRenderer.DrawText(g, Text, Font, textBounds, textColor, flags);
         if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(ClientRectangle, -4, -4));
     }
 

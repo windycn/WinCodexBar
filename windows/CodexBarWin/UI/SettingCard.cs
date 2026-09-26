@@ -14,6 +14,8 @@ public sealed class SettingCard : Panel
     private readonly MultilineEllipsisLabel _descriptionLabel;
     private Control? _action;
     private bool _reflowing;
+    private int _logicalActionWidth;
+    private readonly Dictionary<Control, int> _actionWidths = new();
     public int LogicalMinimumHeight { get; set; } = 118;
 
     public SettingCard(string glyph, string title, string description)
@@ -63,7 +65,15 @@ public sealed class SettingCard : Panel
             _action = value;
             if (_action != null)
             {
-                _action.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _logicalActionWidth = _action.Width;
+                _actionWidths.Clear();
+                void Remember(Control control)
+                {
+                    _actionWidths[control] = control.Width;
+                    foreach (Control child in control.Controls) Remember(child);
+                }
+                Remember(_action);
+                _action.Anchor = AnchorStyles.Top | AnchorStyles.Left;
                 Controls.Add(_action);
                 LayoutAction();
             }
@@ -89,21 +99,64 @@ public sealed class SettingCard : Panel
         {
         var scale = AppAppearance.ScaleFor(this);
         int D(float n) => (int)Math.Round(n * scale);
-        var actionWidth = _action?.Width ?? 0;
-        var stacked = _action is not null && Width < actionWidth + D(330);
-        var requiredHeight = stacked ? D(114) + _action!.Height : D(118);
-        Height = Math.Max(D(LogicalMinimumHeight), requiredHeight);
-        var textWidth = Math.Max(1, Width - D(98) - (stacked ? 0 : actionWidth + D(24)));
-        _titleLabel.SetBounds(D(74), D(16), textWidth, D(28));
-        _descriptionLabel.SetBounds(D(74), D(48), textWidth, stacked ? D(48) : Math.Max(D(46), Height - D(66)));
+        var padding = D(20);
+        var desiredActionWidth = D(_logicalActionWidth);
+        var stacked = _action is not null && Width < desiredActionWidth + D(330);
+        var textLeft = D(60);
+        var textWidth = Math.Max(1, Width - textLeft - padding - (stacked ? 0 : desiredActionWidth + D(24)));
+        var titleHeight = Math.Max(D(26), _titleLabel.Font.Height + D(4));
+        var descriptionHeight = Math.Max(D(24), TextRenderer.MeasureText(_descriptionLabel.Text, _descriptionLabel.Font,
+            new Size(textWidth, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height + D(4));
+        _titleLabel.SetBounds(textLeft, D(16), textWidth, titleHeight);
+        _descriptionLabel.SetBounds(textLeft, D(20) + titleHeight, textWidth, descriptionHeight);
+        var textBottom = _descriptionLabel.Bottom;
         if (_action is not null)
         {
-            _action.Location = new Point(stacked ? D(74) : Width - D(24) - actionWidth,
-                stacked ? D(98) : (Height - _action.Height) / 2);
+            FitAction(_action, Math.Max(1, Math.Min(desiredActionWidth, Width - padding * 2)));
+            Height = Math.Max(D(LogicalMinimumHeight), stacked ? textBottom + D(16) + _action.Height + padding : Math.Max(textBottom + padding, _action.Height + padding * 2));
+            _action.Location = new Point(stacked ? padding : Width - padding - _action.Width,
+                stacked ? textBottom + D(16) : (Height - _action.Height) / 2);
             _action.BringToFront();
         }
+        else Height = Math.Max(D(LogicalMinimumHeight), textBottom + padding);
         }
         finally { _reflowing = false; }
+    }
+
+    private void FitAction(Control action, int width)
+    {
+        action.Width = width;
+        if (action is FlowLayoutPanel flow)
+        {
+            flow.WrapContents = true;
+            foreach (Control child in flow.Controls)
+            {
+                var preferred = (int)Math.Round(_actionWidths.GetValueOrDefault(child, child.Width) * AppAppearance.ScaleFor(this));
+                var available = Math.Max(1,width - child.Margin.Horizontal - flow.Padding.Horizontal);
+                child.Width = Math.Min(preferred, available);
+                if (child is FlowLayoutPanel or TableLayoutPanel) FitAction(child, child.Width);
+            }
+            flow.PerformLayout();
+            action.Height = Math.Max(1, flow.Controls.Cast<Control>().Select(c => c.Bottom + c.Margin.Bottom).DefaultIfEmpty(0).Max() + flow.Padding.Bottom);
+        }
+        else if (action is TableLayoutPanel table)
+        {
+            table.PerformLayout();
+            var totalHeight = table.Padding.Vertical;
+            for (var row = 0; row < table.RowCount; row++)
+            {
+                var height = 0;
+                foreach (Control child in table.Controls.Cast<Control>().Where(c => table.GetRow(c) == row))
+                {
+                    FitAction(child, Math.Max(1,width - table.Padding.Horizontal - child.Margin.Horizontal));
+                    height = Math.Max(height, child.Height + child.Margin.Vertical);
+                }
+                table.RowStyles[row].SizeType = SizeType.Absolute;
+                table.RowStyles[row].Height = height;
+                totalHeight += height;
+            }
+            table.Height = Math.Max(1,totalHeight);
+        }
     }
 
     private void LayoutAction() => Reflow();

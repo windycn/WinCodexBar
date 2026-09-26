@@ -1001,7 +1001,7 @@ public sealed class TrayPopupForm : Form
 
     private Font FontPx(float size, FontStyle style)
     {
-        return new Font(FluentTheme.TextFontFamily, DpiF(size), style, GraphicsUnit.Pixel);
+        return FluentTheme.TextFontPx(DpiF(size), style);
     }
 
     private int Dpi(float value) => (int)Math.Round(value * _scale);

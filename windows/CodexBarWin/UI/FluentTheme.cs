@@ -10,8 +10,8 @@ namespace CodexBarWin.UI;
 internal static class FluentTheme
 {
     // 字体族
-    public static readonly string TextFontFamily = ResolveTextFontFamily();
-    public static readonly string IconFontFamily = ResolveIconFontFamily();
+    public static readonly string TextFontFamily = EmbeddedFonts.Text.Name;
+    public static readonly string IconFontFamily = EmbeddedFonts.Icons.Name;
 
     // 文本
     public static readonly Color TextPrimary = Color.FromArgb(31, 31, 31);          // TextFillColorPrimary
@@ -85,21 +85,21 @@ internal static class FluentTheme
     }
 
     /// <summary>
-    /// 创建文本字体（Segoe UI Variable Text 优先，回落 Segoe UI / Microsoft YaHei UI）。
+    /// 创建内置的中英文无衬线字体，避免系统缺少字体时回退成衬线体。
     /// </summary>
     public static Font TextFont(float size, FontStyle style = FontStyle.Regular)
     {
-        return new Font(TextFontFamily, size, style);
+        return new Font(EmbeddedFonts.Text, size, style);
     }
 
     public static Font TextFontPx(float pixelSize, FontStyle style = FontStyle.Regular)
     {
-        return new Font(TextFontFamily, pixelSize, style, GraphicsUnit.Pixel);
+        return new Font(EmbeddedFonts.Text, pixelSize, style, GraphicsUnit.Pixel);
     }
 
     public static Font IconFontPx(float pixelSize)
     {
-        return new Font(IconFontFamily, pixelSize, FontStyle.Regular, GraphicsUnit.Pixel);
+        return new Font(EmbeddedFonts.Icons, pixelSize, FontStyle.Regular, GraphicsUnit.Pixel);
     }
 
     /// <summary>
@@ -139,34 +139,4 @@ internal static class FluentTheme
         return path;
     }
 
-    private static string ResolveTextFontFamily()
-    {
-        foreach (var name in new[] { "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI" })
-        {
-            if (FontFamilyExists(name)) return name;
-        }
-        return FontFamily.GenericSansSerif.Name;
-    }
-
-    private static string ResolveIconFontFamily()
-    {
-        foreach (var name in new[] { "Segoe Fluent Icons", "Segoe MDL2 Assets" })
-        {
-            if (FontFamilyExists(name)) return name;
-        }
-        return "Segoe UI Symbol";
-    }
-
-    private static bool FontFamilyExists(string name)
-    {
-        try
-        {
-            using var family = new FontFamily(name);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }

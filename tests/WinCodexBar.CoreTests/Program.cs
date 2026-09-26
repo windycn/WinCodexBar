@@ -30,6 +30,13 @@ try
     File.WriteAllText(Path.Combine(CodexPaths.CodexRoot,"models_cache.json"), "{\"models\":[{\"slug\":\"gpt-future\",\"supported_reasoning_levels\":[{\"effort\":\"ultra\"}],\"service_tiers\":[{\"id\":\"priority\"}]}]}");
     Check(CodexModelCatalog.Models().Contains("gpt-future") && CodexModelCatalog.Efforts("gpt-future").Contains("ultra"), "local model catalog extends choices");
     Check(CodexModelCatalog.ConfigTier("gpt-future","standard") is null && CodexModelCatalog.ConfigTier("gpt-future","priority") == "fast", "service tier writes supported values only");
+    var toml = "# settings\n[profiles.test]\nmodel = \"profile-model\"\n";
+    var edited = TomlRootEditor.Set(toml,"model","\"gpt-6-sol\"");
+    Check(edited.IndexOf("gpt-6-sol", StringComparison.Ordinal) < edited.IndexOf("[profiles", StringComparison.Ordinal) && edited.Contains("profile-model"), "model inserted at root preserves profiles");
+    var removed = TomlRootEditor.Set("service_tier = \"fast\"\n[profiles.test]\nservice_tier = \"priority\"\n","service_tier",null);
+    Check(!removed.Contains("fast") && removed.Contains("priority"), "remove root tier preserves profile tier");
+    var multiline = "instructions = \"\"\"\n[example]\nmodel = example\n\"\"\"\n[profiles.test]\n";
+    Check(TomlRootEditor.Set(multiline,"model","\"gpt-6-sol\"").StartsWith(multiline[..multiline.IndexOf("[profiles",StringComparison.Ordinal)]), "multiline instructions remain unchanged");
     var registry = new AccountRegistry();
     registry.UpsertAccount(new TokenAccount { AccountId = "fake-a", Email = "a@example.test" }, true);
     registry.UpsertAccount(new TokenAccount { AccountId = "fake-b", Email = "b@example.test" }, false);

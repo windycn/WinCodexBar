@@ -101,7 +101,7 @@ public sealed class CodexSyncService
         }
 
         var options = new JsonSerializerOptions { WriteIndented = true };
-        File.WriteAllText(CodexPaths.AuthPath, JsonSerializer.Serialize(payload, options));
+        AtomicFile.WriteAllText(CodexPaths.AuthPath, JsonSerializer.Serialize(payload, options));
     }
 
     private void WriteConfigToml(TokenAccount account, bool routeThroughGateway)
@@ -131,7 +131,7 @@ public sealed class CodexSyncService
             text = UpsertKey(text, "openai_base_url", Quote(OpenAIAccountGatewayService.BaseUrl));
         }
 
-        File.WriteAllText(CodexPaths.ConfigTomlPath, text.TrimEnd() + "\n");
+        AtomicFile.WriteAllText(CodexPaths.ConfigTomlPath, text.TrimEnd() + "\n");
     }
 
     private static string Quote(string value)
@@ -140,23 +140,9 @@ public sealed class CodexSyncService
         return "\"" + escaped + "\"";
     }
 
-    private static string UpsertKey(string tomlText, string key, string value)
-    {
-        var pattern = $@"(?m)^\s*{Regex.Escape(key)}\s*=.*$";
-        if (Regex.IsMatch(tomlText, pattern))
-        {
-            return Regex.Replace(tomlText, pattern, $"{key} = {value}");
-        }
+    private static string UpsertKey(string tomlText, string key, string value) => TomlRootEditor.Set(tomlText, key, value);
 
-        var prefix = string.IsNullOrWhiteSpace(tomlText.Trim()) ? string.Empty : "\n";
-        return tomlText.TrimEnd() + prefix + $"{key} = {value}\n";
-    }
-
-    private static string RemoveKey(string tomlText, string key)
-    {
-        var pattern = $@"(?m)^\s*{Regex.Escape(key)}\s*=.*(?:\r?\n|$)";
-        return Regex.Replace(tomlText, pattern, string.Empty);
-    }
+    private static string RemoveKey(string tomlText, string key) => TomlRootEditor.Set(tomlText, key, null);
 
     private static string RemoveSection(string tomlText, string sectionName)
     {

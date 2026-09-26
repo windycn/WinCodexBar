@@ -13,5 +13,6 @@
     <Compile Include="../../windows/CodexBarWin/Services/CodexRadarService.cs" Link="Services/CodexRadarService.cs" />
     <Compile Include="../../windows/CodexBarWin/Services/CodexModelCatalog.cs" Link="Services/CodexModelCatalog.cs" />
     <Compile Include="../../windows/CodexBarWin/Services/AppDataMigration.cs" Link="Services/AppDataMigration.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/TomlRootEditor.cs" Link="Services/TomlRootEditor.cs" />
   </ItemGroup>
 </Project>

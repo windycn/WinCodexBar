@@ -24,6 +24,10 @@ public sealed class SettingsForm : AdaptiveForm
     private readonly Action _openConfigFolder;
     private readonly Action _onSettingsChanged;
     private readonly Action _checkUpdates;
+    private TableLayoutPanel? _root;
+    private Panel? _navCard;
+    private TableLayoutPanel? _footer;
+    private readonly ComboBox _compactNavigation = new FluentComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly FlowLayoutPanel _sidebar = new();
     private readonly Panel _scrollHost = new();
     private readonly Panel _content = new();
@@ -58,7 +62,7 @@ public sealed class SettingsForm : AdaptiveForm
         Font = FluentTheme.TextFontPx(14);
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(640, 420);
+        MinimumSize = new Size(480, 360);
         Size = new Size(1180, 780);
         BackColor = FluentTheme.LayerBackground;
         AppIconProvider.Apply(this);
@@ -85,19 +89,32 @@ public sealed class SettingsForm : AdaptiveForm
 
     private void BuildLayout()
     {
-        var root = new TableLayoutPanel
+        var root = _root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
             Padding = new Padding(16),
             ColumnCount = 2,
-            RowCount = 1,
+            RowCount = 2,
         };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 184));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        InstallScrollableContent(root, new Size(820, 480));
+        InstallScrollableContent(root, Size.Empty);
+        _compactNavigation.Items.AddRange(new object[] { "账号设置", "用量设置", "唤醒与更新", "模型参数", "外观与缩放" });
+        _compactNavigation.SelectedIndex = 0;
+        _compactNavigation.SelectedIndexChanged += (_, _) =>
+        {
+            if (_compactNavigation.SelectedIndex >= 0 && _selectedPage != (Page)_compactNavigation.SelectedIndex)
+                SelectPage((Page)_compactNavigation.SelectedIndex);
+        };
+        root.Controls.Add(_compactNavigation, 0, 0);
+        root.SetColumnSpan(_compactNavigation, 2);
+        ClientSizeChanged += (_, _) => LayoutResponsiveNavigation();
+        Shown += (_, _) => LayoutResponsiveNavigation();
 
-        var navCard = new Panel
+        var navCard = _navCard = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = FluentTheme.SubtleBackground,
@@ -105,7 +122,7 @@ public sealed class SettingsForm : AdaptiveForm
             Margin = new Padding(0, 0, 16, 0),
         };
         navCard.Paint += (_, e) => DrawRoundedPanel(e.Graphics, navCard.ClientRectangle, FluentTheme.SubtleBackground, FluentTheme.StrokeDefault, 8);
-        root.Controls.Add(navCard, 0, 0);
+        root.Controls.Add(navCard, 0, 1);
 
         _sidebar.Dock = DockStyle.Fill;
         _sidebar.BackColor = Color.Transparent;
@@ -114,7 +131,7 @@ public sealed class SettingsForm : AdaptiveForm
         navCard.Controls.Add(_sidebar);
         _sidebar.Controls.Add(MakeNavButton(Page.Accounts, FluentIcons.Account, "账号设置"));
         _sidebar.Controls.Add(MakeNavButton(Page.Usage, FluentIcons.Chart, "用量设置"));
-        _sidebar.Controls.Add(MakeNavButton(Page.Windows, FluentIcons.Power, "唤醒策略"));
+        _sidebar.Controls.Add(MakeNavButton(Page.Windows, FluentIcons.Power, "唤醒与更新"));
         _sidebar.Controls.Add(MakeNavButton(Page.Models, FluentIcons.Settings, "模型参数"));
         _sidebar.Controls.Add(MakeNavButton(Page.Appearance, FluentIcons.Home, "外观与缩放"));
 
@@ -128,7 +145,7 @@ public sealed class SettingsForm : AdaptiveForm
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        root.Controls.Add(main, 1, 0);
+        root.Controls.Add(main, 1, 1);
 
         var header = new TableLayoutPanel
         {
@@ -168,7 +185,7 @@ public sealed class SettingsForm : AdaptiveForm
         _content.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _scrollHost.Controls.Add(_content);
 
-        var footer = new TableLayoutPanel
+        var footer = _footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
@@ -211,6 +228,7 @@ public sealed class SettingsForm : AdaptiveForm
             Height = 42,
             Margin = new Padding(0, 0, 0, 6),
             Text = text,
+            IconGlyph = icon,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = FluentTheme.TextFontPx(16, FontStyle.Regular),
             FlatStyle = FlatStyle.Flat,
@@ -226,14 +244,17 @@ public sealed class SettingsForm : AdaptiveForm
     private void SelectPage(Page page)
     {
         _selectedPage = page;
+        _compactNavigation.SelectedIndex = (int)page;
         foreach (Button button in _sidebar.Controls.OfType<Button>())
         {
+            if (button is FluentButton nav) nav.NavigationSelected = false;
             button.BackColor = FluentTheme.SubtleBackground;
             button.ForeColor = FluentTheme.TextSecondary;
         }
 
         if ((int)page < _sidebar.Controls.Count && _sidebar.Controls[(int)page] is Button selected)
         {
+            if (selected is FluentButton nav) nav.NavigationSelected = true;
             selected.BackColor = Color.FromArgb(229, 240, 252);
             selected.ForeColor = FluentTheme.Accent;
         }
@@ -259,8 +280,8 @@ public sealed class SettingsForm : AdaptiveForm
                 BuildUsagePage();
                 break;
             case Page.Windows:
-                _title.Text = "唤醒策略";
-                _subtitle.Text = "控制防休眠和空闲保护。";
+                _title.Text = "唤醒与更新";
+                _subtitle.Text = "管理更新、防休眠和空闲保护。";
                 BuildWindowsPage();
                 break;
             case Page.Appearance:
@@ -920,9 +941,35 @@ public sealed class SettingsForm : AdaptiveForm
         return card;
     }
 
+    private void LayoutResponsiveNavigation()
+    {
+        if (_root is null || _navCard is null) return;
+        var scale = AppAppearance.ScaleFor(this);
+        var compact = ClientSize.Width / scale < 980;
+        _root.SuspendLayout();
+        _root.ColumnStyles[0].Width = compact ? 0 : 184 * scale;
+        _root.RowStyles[0].Height = compact ? 44 * scale : 0;
+        _navCard.Visible = !compact;
+        _compactNavigation.Visible = compact;
+        if (_footer is not null)
+        {
+            var narrow = ClientSize.Width / scale < 460;
+            _saveStatusLabel.Visible = !narrow;
+            _footer.ColumnStyles[0].SizeType = narrow ? SizeType.Absolute : SizeType.Percent;
+            _footer.ColumnStyles[0].Width = narrow ? 0 : 100;
+            for (var i=1;i<4;i++)
+            {
+                _footer.ColumnStyles[i].SizeType = narrow ? SizeType.Percent : SizeType.Absolute;
+                _footer.ColumnStyles[i].Width = narrow ? 33.33f : (i==3 ? 118 : 92) * scale;
+            }
+        }
+        _root.ResumeLayout(true);
+        ResizeCards();
+    }
+
     private void ResizeCards()
     {
-        var width = Math.Max((int)(610 * AppAppearance.ScaleFor(this)), _scrollHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 10);
+        var width = Math.Max(1, _scrollHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - (int)(10 * AppAppearance.ScaleFor(this)));
         _content.SuspendLayout();
         _content.Width = width;
         var top = 0;
@@ -986,6 +1033,7 @@ public sealed class SettingsForm : AdaptiveForm
         _keepAwakeService.SetAdvancedEnabled(_draft.AdvancedKeepAwakeEnabled);
         StartupService.SetEnabled(_draft.StartWithWindows);
         _onSettingsChanged();
+        LayoutResponsiveNavigation();
         SelectPage(_selectedPage);
         _saveStatusLabel.Text = $"已保存 · {DateTime.Now:HH:mm:ss}";
         _saveButton.Text = "已保存";

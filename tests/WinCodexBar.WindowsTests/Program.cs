@@ -46,6 +46,7 @@ internal static class Program
                     foreach (var page in Enum.GetValues(pageType))
                     {
                         Call(settings,"SelectPage",page!); Paint(settings,$"settings-{scale}-{page}.png");
+                        Check(!((ScrollableControl)settings.Controls[0]).HorizontalScroll.Visible, $"settings has no horizontal overflow {scale}% {page}");
                         Check(Screen.FromControl(settings).WorkingArea.Contains(settings.Bounds), $"settings fit {scale}% {size} {page}");
                         foreach (var card in Descendants(settings).OfType<SettingCard>())
                         {
@@ -107,7 +108,9 @@ internal static class Program
         },()=>{});
         using(popup)
         {
-            popup.ShowNearCursor(); Paint(popup,"popup.png");
+            var watch=Stopwatch.StartNew();
+            popup.ShowNearCursor(); watch.Stop(); Console.WriteLine($"Popup show time: {watch.ElapsedMilliseconds} ms");
+            Paint(popup,"popup.png");
             Check(Screen.FromControl(popup).WorkingArea.Contains(popup.Bounds),"popup fits work area");
             var hits=((IEnumerable)Field(popup,"_hits")!).Cast<object>().ToArray();
             var hit=hits.First(h=>(string?)h.GetType().GetField("Tooltip")!.GetValue(h)=="删除此账号");
