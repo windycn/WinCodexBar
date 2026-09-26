@@ -175,7 +175,7 @@ public sealed class SettingCard : Panel
 
         // Fluent-style setting glyph tile.
         var scale = AppAppearance.ScaleFor(this);
-        var tileRect = new RectangleF(18 * scale, (Height - 36 * scale) / 2f, 36 * scale, 36 * scale);
+        var tileRect = new RectangleF(18 * scale, 16 * scale, 36 * scale, 36 * scale);
         using var tileBrush = new SolidBrush(Color.FromArgb(239, 246, 253));
         using var tilePen = new Pen(Color.FromArgb(218, 232, 246), 1f);
         g.FillEllipse(tileBrush, tileRect);

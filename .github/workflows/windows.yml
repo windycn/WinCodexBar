@@ -25,10 +25,13 @@ jobs:
             dotnet publish windows/CodexBarWin/CodexBarWin.csproj -c Release -r $rid --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "artifacts/$rid"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+      - name: 打包与校验清单
+        shell: pwsh
+        run: ./tools/Package-Windows.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: windows-validation-and-packages
           path: |
-            artifacts/
+            artifacts/packages/
             tests/WinCodexBar.WindowsTests/bin/Release/net8.0-windows/screenshots/

@@ -39,6 +39,7 @@ internal static class Program
                 AppAppearance.ScalePercent = scale;
                 using var settings = new SettingsForm(store, wake, () => {}, () => {});
                 settings.Show();
+                Console.WriteLine($"Text font: {settings.Font.Name}; family: {settings.Font.FontFamily.Name}; style: {settings.Font.Style}; size: {settings.Font.Size}");
                 foreach (var size in new[] {new Size(800,600),new Size(1366,768),new Size(1920,1080)})
                 {
                     settings.Size = size; settings.ApplyAppearance();

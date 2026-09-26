@@ -21,8 +21,8 @@ public class AdaptiveForm : Form
     {
         _logicalMinimum = logicalMinimum;
         _content = content;
-        _viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.Transparent };
-        content.Dock = DockStyle.None;
+        _viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = logicalMinimum != Size.Empty, BackColor = Color.Transparent };
+        content.Dock = logicalMinimum == Size.Empty ? DockStyle.Fill : DockStyle.None;
         content.Margin = Padding.Empty;
         content.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         _viewport.Controls.Add(content);
@@ -34,6 +34,7 @@ public class AdaptiveForm : Form
     private void LayoutContent()
     {
         if (_viewport is null || _content is null) return;
+        if (_logicalMinimum == Size.Empty) return;
         var scale = AppAppearance.ScaleFor(this);
         var minimum = new Size((int)(_logicalMinimum.Width * scale), (int)(_logicalMinimum.Height * scale));
         var size = new Size(Math.Max(minimum.Width, _viewport.ClientSize.Width), Math.Max(minimum.Height, _viewport.ClientSize.Height));

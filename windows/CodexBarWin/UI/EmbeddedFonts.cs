@@ -24,7 +24,8 @@ internal static class EmbeddedFonts
         Buffers.Add(pointer); // 字体系统在进程生命周期内引用该内存。
         Collection.AddMemoryFont(pointer, bytes.Length);
         uint count = 0;
-        AddFontMemResourceEx(pointer, (uint)bytes.Length, IntPtr.Zero, ref count);
+        var handle = AddFontMemResourceEx(pointer, (uint)bytes.Length, IntPtr.Zero, ref count);
+        if (handle == IntPtr.Zero || count == 0) throw new InvalidOperationException("无法注册内置字体: " + filename);
         return Collection.Families.First(f => filename.StartsWith("Fluent", StringComparison.Ordinal) ? f.Name.Contains("Fluent") : f.Name.Contains("WinCodexBar Sans"));
     }
 
