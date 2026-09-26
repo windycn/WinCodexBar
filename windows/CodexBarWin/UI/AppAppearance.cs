@@ -13,6 +13,8 @@ public static class AppAppearance
         root.Scale(new SizeF(factor, factor));
         foreach (var item in fonts)
             item.Control.Font = new Font(item.Font.FontFamily, item.Font.Size * factor, item.Font.Style, item.Font.Unit);
+        // Scale 递归时子控件可能已被父布局调整，随后又被放大。最后按父到子的顺序重新 Dock。
+        foreach (var item in fonts) item.Control.PerformLayout();
     }
 
     public static float ScaleFor(Control control) => ScalePercent == 0 ? control.DeviceDpi / 96f : ScalePercent / 100f;

@@ -985,6 +985,10 @@ public sealed class SettingsForm : AdaptiveForm
             _main.RowStyles[2].Height = 58 * scale;
         }
         _root.ResumeLayout(true);
+        _root.PerformLayout();
+        _main?.PerformLayout();
+        _header?.PerformLayout();
+        _footer?.PerformLayout();
         ResizeCards();
     }
 
