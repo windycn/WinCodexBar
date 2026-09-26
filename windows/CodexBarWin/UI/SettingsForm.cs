@@ -144,6 +144,7 @@ public sealed class SettingsForm : AdaptiveForm
             ColumnCount = 1,
             RowCount = 3,
         };
+        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
@@ -156,6 +157,7 @@ public sealed class SettingsForm : AdaptiveForm
             RowCount = 2,
             ColumnCount = 1,
         };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         header.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         header.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
         main.Controls.Add(header, 0, 0);
@@ -195,6 +197,7 @@ public sealed class SettingsForm : AdaptiveForm
             RowCount = 1,
             Padding = new Padding(0, 12, 0, 0),
         };
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));

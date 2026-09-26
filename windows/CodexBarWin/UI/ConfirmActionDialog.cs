@@ -28,6 +28,7 @@ public sealed class ConfirmActionDialog : AdaptiveForm
             RowCount = 3,
             ColumnCount = 1,
         };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));

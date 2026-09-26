@@ -803,6 +803,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             RowCount = 3,
             ColumnCount = 1,
         };
+        accountInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
@@ -870,6 +871,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             ColumnCount = 1,
             Padding = new Padding(0, 2, 0, 0),
         };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
