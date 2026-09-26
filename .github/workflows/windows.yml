@@ -3,6 +3,11 @@ on:
   push:
     branches: [main, fix/windows-0.2]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 发布已验证的 0.2.0 正式包
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -35,3 +40,27 @@ jobs:
           path: |
             artifacts/packages/
             tests/WinCodexBar.WindowsTests/bin/Release/net8.0-windows/screenshots/
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-validation-and-packages
+          path: release-files
+      - name: 发布正式版
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create v0.2.0
+          release-files/artifacts/packages/*.zip
+          release-files/artifacts/packages/SHA256SUMS.txt
+          --target "$GITHUB_SHA"
+          --title "WinCodexBar 0.2.0 · Fluent 界面与自动更新"
+          --notes-file tools/Release-Notes-0.2.0.md
+          --latest
