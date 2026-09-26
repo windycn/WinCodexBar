@@ -13,6 +13,8 @@ public sealed class SettingCard : Panel
     private readonly Label _titleLabel;
     private readonly MultilineEllipsisLabel _descriptionLabel;
     private Control? _action;
+    private bool _reflowing;
+    public int LogicalMinimumHeight { get; set; } = 118;
 
     public SettingCard(string glyph, string title, string description)
     {
@@ -81,13 +83,16 @@ public sealed class SettingCard : Panel
 
     public void Reflow()
     {
-        if (_titleLabel is null || _descriptionLabel is null) return;
+        if (_titleLabel is null || _descriptionLabel is null || _reflowing) return;
+        _reflowing = true;
+        try
+        {
         var scale = AppAppearance.ScaleFor(this);
         int D(float n) => (int)Math.Round(n * scale);
         var actionWidth = _action?.Width ?? 0;
         var stacked = _action is not null && Width < actionWidth + D(330);
         var requiredHeight = stacked ? D(114) + _action!.Height : D(118);
-        if (Height < requiredHeight) Height = requiredHeight;
+        Height = Math.Max(D(LogicalMinimumHeight), requiredHeight);
         var textWidth = Math.Max(1, Width - D(98) - (stacked ? 0 : actionWidth + D(24)));
         _titleLabel.SetBounds(D(74), D(16), textWidth, D(28));
         _descriptionLabel.SetBounds(D(74), D(48), textWidth, stacked ? D(48) : Math.Max(D(46), Height - D(66)));
@@ -97,6 +102,8 @@ public sealed class SettingCard : Panel
                 stacked ? D(98) : (Height - _action.Height) / 2);
             _action.BringToFront();
         }
+        }
+        finally { _reflowing = false; }
     }
 
     private void LayoutAction() => Reflow();

@@ -384,7 +384,7 @@ public sealed class TrayPopupForm : Form
         DrawText(g, "WinCodexBar", titleFont, FluentTheme.TextPrimary, Rect(20, 18, 260, 32));
 
         var close = Rect(396, 18, 28, 28);
-        var closeId = AddHit(close, Close, "关闭", HitStyle.CloseGlyph, closeAfter: true);
+        var closeId = AddHit(close, () => { }, "关闭", HitStyle.CloseGlyph, closeAfter: true);
         DrawCloseGlyph(g, close, closeId);
 
         var accountText = active is null ? "当前账号：未激活" : $"当前账号：{TrimMiddle(BuildAccountLabel(active), 28)}";

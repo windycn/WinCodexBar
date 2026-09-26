@@ -14,6 +14,9 @@ try
 {
     var settings = new CodexBarConfigStore();
     settings.Update(c => { c.KeepAwakeEnabled = false; c.AdvancedKeepAwakeEnabled = false; c.StartWithWindows = false; c.AutoCheckUpdates = false; c.UiScalePercent = 200; c.TrayIconStyle = "percent"; c.Global.DefaultModel = "custom-model"; });
+    AppDataMigration.EnsureVersionBackup();
+    AppDataMigration.EnsureVersionBackup();
+    Check(Directory.GetDirectories(Path.Combine(CodexPaths.CodexBarRoot,"backups")).Length == 1, "upgrade backup runs once per version");
     settings.Load();
     Check(!settings.Config.KeepAwakeEnabled && !settings.Config.AdvancedKeepAwakeEnabled && !settings.Config.StartWithWindows && !settings.Config.AutoCheckUpdates, "false settings survive restart");
     Check(settings.Config.UiScalePercent == 200 && settings.Config.TrayIconStyle == "percent", "appearance survives restart");
@@ -24,6 +27,9 @@ try
     File.WriteAllText(CodexPaths.WindowsSettingsPath, "{\"KeepAwakeEnabled\":false,\"openai\":{\"auto_refresh_interval_seconds\":2147483647},\"ui_scale_percent\":-5}");
     settings.Load();
     Check(!settings.Config.KeepAwakeEnabled && settings.Config.OpenAI.AutoRefreshIntervalSeconds == 86400 && settings.Config.UiScalePercent == 0, "legacy settings and invalid ranges");
+    File.WriteAllText(Path.Combine(CodexPaths.CodexRoot,"models_cache.json"), "{\"models\":[{\"slug\":\"gpt-future\",\"supported_reasoning_levels\":[{\"effort\":\"ultra\"}],\"service_tiers\":[{\"id\":\"priority\"}]}]}");
+    Check(CodexModelCatalog.Models().Contains("gpt-future") && CodexModelCatalog.Efforts("gpt-future").Contains("ultra"), "local model catalog extends choices");
+    Check(CodexModelCatalog.ConfigTier("gpt-future","standard") is null && CodexModelCatalog.ConfigTier("gpt-future","priority") == "fast", "service tier writes supported values only");
     var registry = new AccountRegistry();
     registry.UpsertAccount(new TokenAccount { AccountId = "fake-a", Email = "a@example.test" }, true);
     registry.UpsertAccount(new TokenAccount { AccountId = "fake-b", Email = "b@example.test" }, false);

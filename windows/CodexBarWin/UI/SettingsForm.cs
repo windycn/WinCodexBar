@@ -34,7 +34,6 @@ public sealed class SettingsForm : AdaptiveForm
     private readonly Button _cancelButton = new FluentButton();
     private readonly Button _configButton = new FluentButton();
     private readonly ToolTip _toolTip = new();
-    private readonly Dictionary<Page, Control[]> _pageCache = new();
     private CodexBarConfig _draft;
     private Page _selectedPage = Page.Accounts;
 
@@ -79,18 +78,6 @@ public sealed class SettingsForm : AdaptiveForm
         if (disposing)
         {
             _toolTip.Dispose();
-            foreach (var controls in _pageCache.Values)
-            {
-                foreach (var control in controls)
-                {
-                    if (!control.IsDisposed)
-                    {
-                        control.Dispose();
-                    }
-                }
-            }
-
-            _pageCache.Clear();
         }
 
         base.Dispose(disposing);
@@ -258,49 +245,40 @@ public sealed class SettingsForm : AdaptiveForm
         foreach (Control old in _content.Controls.Cast<Control>().ToArray()) old.Dispose();
         _content.Controls.Clear();
         _content.Location = new Point(0, 0);
-        var useCachedPage = false;
-        Control[]? cachedPageControls = null;
 
         switch (page)
         {
             case Page.Accounts:
                 _title.Text = "账号设置";
                 _subtitle.Text = "选择账号切换与路由方式。";
-                if (!useCachedPage) BuildAccountsPage();
+                BuildAccountsPage();
                 break;
             case Page.Usage:
                 _title.Text = "用量设置";
                 _subtitle.Text = "调整额度、Token 单位和刷新。";
-                if (!useCachedPage) BuildUsagePage();
+                BuildUsagePage();
                 break;
             case Page.Windows:
                 _title.Text = "唤醒策略";
                 _subtitle.Text = "控制防休眠和空闲保护。";
-                if (!useCachedPage) BuildWindowsPage();
+                BuildWindowsPage();
                 break;
             case Page.Appearance:
                 _title.Text = "外观与缩放";
                 _subtitle.Text = "自动适配显示器，也可手动选择界面大小与托盘样式。";
-                if (!useCachedPage) BuildAppearancePage();
+                BuildAppearancePage();
                 break;
             case Page.Models:
                 _title.Text = "模型参数";
                 _subtitle.Text = "配置默认模型与请求参数。";
-                if (!useCachedPage) BuildModelsPage();
+                BuildModelsPage();
                 break;
         }
 
-        if (useCachedPage && cachedPageControls is not null)
+        if (IsHandleCreated)
         {
-            _content.Controls.AddRange(cachedPageControls);
-        }
-        else
-        {
-            if (IsHandleCreated)
-            {
-                var scale = AppAppearance.ScaleFor(this);
-                foreach (Control card in _content.Controls) card.Scale(new SizeF(scale, scale));
-            }
+            var scale = AppAppearance.ScaleFor(this);
+            foreach (Control card in _content.Controls) card.Scale(new SizeF(scale, scale));
         }
 
         _content.ResumeLayout(true);
@@ -479,7 +457,7 @@ public sealed class SettingsForm : AdaptiveForm
             FluentIcons.Settings,
             "默认模型",
             "Codex 默认使用的模型。",
-            CodexBarConfig.AvailableModels,
+            CodexModelCatalog.Models(),
             _draft.Global.DefaultModel,
             value => _draft.Global.DefaultModel = value));
 
@@ -487,7 +465,7 @@ public sealed class SettingsForm : AdaptiveForm
             FluentIcons.Chart,
             "Review 模型",
             "代码评审使用的模型。",
-            CodexBarConfig.AvailableModels,
+            CodexModelCatalog.Models(),
             _draft.Global.ReviewModel,
             value => _draft.Global.ReviewModel = value));
 
@@ -495,7 +473,7 @@ public sealed class SettingsForm : AdaptiveForm
             FluentIcons.Activity,
             "推理强度",
             "控制思考投入强度。",
-            CodexBarConfig.AvailableReasoningEfforts,
+            CodexModelCatalog.Efforts(_draft.Global.DefaultModel),
             _draft.Global.ReasoningEffort,
             value => _draft.Global.ReasoningEffort = value));
 
@@ -503,7 +481,7 @@ public sealed class SettingsForm : AdaptiveForm
             FluentIcons.Cloud,
             "服务等级",
             "选择请求服务等级。",
-            CodexBarConfig.AvailableServiceTiers,
+            CodexModelCatalog.Tiers(_draft.Global.DefaultModel),
             _draft.Global.ServiceTier,
             value => _draft.Global.ServiceTier = value));
     }
@@ -935,6 +913,7 @@ public sealed class SettingsForm : AdaptiveForm
         var card = new SettingCard(glyph, title, description)
         {
             Height = height,
+            LogicalMinimumHeight = height,
         };
         action.Margin = new Padding(0);
         card.Action = action;

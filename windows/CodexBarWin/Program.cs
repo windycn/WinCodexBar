@@ -28,7 +28,12 @@ namespace CodexBarWin
                 MessageBox.Show("WinCodexBar 已在运行，请从系统托盘打开。", "WinCodexBar");
                 return;
             }
-            try { Application.Run(new CodexBarTrayContext()); }
+            try
+            {
+                AppDataMigration.EnsureVersionBackup();
+                using var context = new CodexBarTrayContext();
+                Application.Run(context);
+            }
             finally { instance.ReleaseMutex(); }
         }
     }

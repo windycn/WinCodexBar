@@ -45,13 +45,13 @@ internal static class Program
                     var pageType = typeof(SettingsForm).GetNestedType("Page", BindingFlags.NonPublic)!;
                     foreach (var page in Enum.GetValues(pageType))
                     {
-                        Call(settings,"SelectPage",page!); Paint(settings);
+                        Call(settings,"SelectPage",page!); Paint(settings,$"settings-{scale}-{page}.png");
                         Check(Screen.FromControl(settings).WorkingArea.Contains(settings.Bounds), $"settings fit {scale}% {size} {page}");
                         foreach (var card in Descendants(settings).OfType<SettingCard>())
                         {
                             if (card.Action is not { } action) continue;
                             Check(card.ClientRectangle.Contains(action.Bounds), $"action within card {scale}% {page}");
-                            foreach (var label in card.Controls.OfType<Label>()) Check(!label.Bounds.IntersectsWith(action.Bounds), $"text does not cover action {scale}% {page}");
+                            foreach (var label in card.Controls.OfType<Label>().Where(label => !ReferenceEquals(label, action))) Check(!label.Bounds.IntersectsWith(action.Bounds), $"text does not cover action {scale}% {page}");
                         }
                     }
                 }

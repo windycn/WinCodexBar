@@ -124,7 +124,8 @@ public sealed class CodexSyncService
         text = UpsertKey(text, "model", Quote(settings.DefaultModel));
         text = UpsertKey(text, "review_model", Quote(string.IsNullOrWhiteSpace(settings.ReviewModel) ? settings.DefaultModel : settings.ReviewModel));
         text = UpsertKey(text, "model_reasoning_effort", Quote(string.IsNullOrWhiteSpace(settings.ReasoningEffort) ? "medium" : settings.ReasoningEffort));
-        text = UpsertKey(text, "service_tier", Quote(string.IsNullOrWhiteSpace(settings.ServiceTier) ? "standard" : settings.ServiceTier));
+        var tier = CodexModelCatalog.ConfigTier(settings.DefaultModel, settings.ServiceTier);
+        text = tier is null ? RemoveKey(text, "service_tier") : UpsertKey(text, "service_tier", Quote(tier));
         if (routeThroughGateway)
         {
             text = UpsertKey(text, "openai_base_url", Quote(OpenAIAccountGatewayService.BaseUrl));
