@@ -17,7 +17,7 @@ public sealed class TrayPopupForm : Form
     private enum HitStyle { None, IconButton, IconButtonFlat, AccentButton, NeutralButton, AccountRow, RefreshGlyph, DeleteGlyph, CloseGlyph, SegmentTab }
 
     private const float PopupLogicalWidth = 440f;
-    private const float AccountListTop = 250f;
+    private const float AccountListTop = 282f;
     private const float AccountListLeft = 16f;
     private const float AccountListWidth = 408f;
     private const float AccountRowHeight = 60f;
@@ -492,7 +492,7 @@ public sealed class TrayPopupForm : Form
 
     private void DrawUsageOverview(Graphics g, TokenAccount? active)
     {
-        var card = Rect(16, 100, 408, 112);
+        var card = Rect(16, 100, 408, 140);
         using var cardBg = new SolidBrush(FluentTheme.CardBackground);
         using var cardEdge = new Pen(FluentTheme.StrokeDefault, Dpi(1));
         FillRound(g, cardBg, card, DpiF(6));
@@ -516,6 +516,9 @@ public sealed class TrayPopupForm : Form
         DrawText(g, $"{planLabel} 订阅", strong, FluentTheme.TextPrimary, Rect(94, 110, 110, 24));
         DrawText(g, modeLabel + " " + AccountUsageHelpers.UsageText(active, _config.OpenAI.UsageDisplayMode), body, FluentTheme.TextSecondary, Rect(190, 112, 206, 22), right: true);
         DrawTokenUsageStrip(g, Rect(28, 156, 368, 22));
+        var detailsRect = Rect(28, 214, 368, 22);
+        AddHit(detailsRect, () => { using var details = new AccountDetailsForm(active, _config.OpenAI.UsageDisplayMode); details.ShowDialog(this); }, "查看重置卡到期时间与精确重置时间", HitStyle.NeutralButton);
+        DrawText(g, AccountUsageHelpers.CreditSummary(active) + " · 查看详情", body, FluentTheme.Accent, detailsRect);
         for (var i = 0; i < windows.Count; i++)
         {
             var window = windows[i];
@@ -553,10 +556,10 @@ public sealed class TrayPopupForm : Form
         var warning = _accounts.Count(a => HealthValue(a) >= 70 && HealthValue(a) < 90);
         var danger = _accounts.Count(a => HealthValue(a) >= 90);
 
-        DrawText(g, "账号信息", heading, FluentTheme.TextPrimary, Rect(20, 222, 92, 22));
-        DrawText(g, $"健康 {healthy} · 警戒 {warning} · 高负载 {danger}", note, FluentTheme.TextSecondary, Rect(112, 223, 220, 22));
+        DrawText(g, "账号信息", heading, FluentTheme.TextPrimary, Rect(20, 254, 92, 22));
+        DrawText(g, $"健康 {healthy} · 警戒 {warning} · 高负载 {danger}", note, FluentTheme.TextSecondary, Rect(112, 255, 220, 22));
         using var pillFont = FontPx(10, FontStyle.Bold);
-        DrawPill(g, $"{_accounts.Count} 个", Rect(370, 223, 50, 22), FluentTheme.Accent, Color.FromArgb(229, 240, 252), pillFont);
+        DrawPill(g, $"{_accounts.Count} 个", Rect(370, 255, 50, 22), FluentTheme.Accent, Color.FromArgb(229, 240, 252), pillFont);
 
         if (_accounts.Count == 0)
         {
@@ -630,7 +633,7 @@ public sealed class TrayPopupForm : Form
     {
         var active = string.Equals(account.AccountId, _activeAccountId, StringComparison.Ordinal);
         var row = Rect(16, y, 400, 60);
-        var rowId = AddHit(row, () => { _activateAccount(account); }, active ? "当前账号" : "切换到此账号", HitStyle.AccountRow);
+        var rowId = AddHit(row, () => { _activateAccount(account); }, AccountUsageHelpers.DetailsText(account, _config.OpenAI.UsageDisplayMode), HitStyle.AccountRow);
         var hovered = _hoveredId == rowId;
         var pressed = _pressedId == rowId;
         var health = HealthValue(account);
@@ -896,7 +899,7 @@ public sealed class TrayPopupForm : Form
     private static string ResetDetail(DateTimeOffset? reset)
     {
         if (reset is null) return "--";
-        return $"{ResetHint(reset)} · {reset.Value.ToLocalTime():M月d日 H:mm}";
+        return reset.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
     private static string RefreshHint(DateTimeOffset checkedAt)

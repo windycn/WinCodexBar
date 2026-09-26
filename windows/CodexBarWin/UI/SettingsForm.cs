@@ -62,7 +62,7 @@ public sealed class SettingsForm : AdaptiveForm
 
         Text = "WinCodexBar 设置";
         Font = FluentTheme.TextFontPx(14);
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(480, 360);
         Size = new Size(1180, 780);

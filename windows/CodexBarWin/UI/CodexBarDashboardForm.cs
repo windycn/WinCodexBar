@@ -85,7 +85,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
 
         Text = "WinCodexBar 工作台";
         Font = FluentTheme.TextFontPx(14);
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(640, 420);
         Size = new Size(1280, 960);
@@ -893,16 +893,16 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
         }, 0, 1);
-        panel.Controls.Add(new Label
+        var details = new LinkLabel
         {
-            Text = "刷新 " + AccountUsageHelpers.FormatLastChecked(account.LastChecked),
-            Dock = DockStyle.Fill,
-            Font = FluentTheme.TextFontPx(13),
-            ForeColor = FluentTheme.TextTertiary,
-            BackColor = Color.Transparent,
-            AutoEllipsis = true,
-            TextAlign = ContentAlignment.MiddleLeft,
-        }, 0, 2);
+            Text = AccountUsageHelpers.CreditSummary(account) + " · 详情",
+            Dock = DockStyle.Fill, Font = FluentTheme.TextFontPx(13),
+            LinkColor = FluentTheme.Accent, BackColor = Color.Transparent, LinkBehavior = LinkBehavior.HoverUnderline,
+            AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand, TabStop = true,
+        };
+        _toolTip.SetToolTip(details, AccountUsageHelpers.DetailsText(account, config.OpenAI.UsageDisplayMode));
+        details.LinkClicked += (_, _) => { using var form = new AccountDetailsForm(account, config.OpenAI.UsageDisplayMode); form.ShowDialog(this); };
+        panel.Controls.Add(details, 0, 2);
         return panel;
     }
 

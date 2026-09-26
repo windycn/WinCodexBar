@@ -55,6 +55,18 @@ public class TokenAccount
     [JsonPropertyName("secondary_limit_window_seconds")]
     public int? SecondaryLimitWindowSeconds { get; set; }
 
+    [JsonPropertyName("reset_credits_available")]
+    public int? ResetCreditsAvailable { get; set; }
+
+    [JsonPropertyName("reset_credit_details")]
+    public List<ResetCreditInfo>? ResetCreditDetails { get; set; }
+
+    [JsonPropertyName("reset_credits_checked_at")]
+    public DateTimeOffset? ResetCreditsCheckedAt { get; set; }
+
+    [JsonPropertyName("reset_credit_details_stale")]
+    public bool ResetCreditDetailsStale { get; set; }
+
     [JsonPropertyName("last_checked")]
     public DateTimeOffset? LastChecked { get; set; }
 

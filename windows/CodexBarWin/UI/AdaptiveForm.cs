@@ -14,7 +14,7 @@ public class AdaptiveForm : Form
     protected AdaptiveForm()
     {
         AutoScaleDimensions = new SizeF(96, 96);
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
     }
 
     protected void InstallScrollableContent(Control content, Size logicalMinimum)
@@ -56,7 +56,8 @@ public class AdaptiveForm : Form
 
     public virtual void ApplyAppearance()
     {
-        var factor = AppAppearance.ScaleFor(this) / (DeviceDpi / 96f);
+        // 统一由此处缩放，避免 WinForms 在 FontChanged 时再次缩放同一棵控件树。
+        var factor = AppAppearance.ScaleFor(this);
         var relative = factor / _manualFactor;
         _manualFactor = factor;
         AppAppearance.ScaleTree(this, relative);

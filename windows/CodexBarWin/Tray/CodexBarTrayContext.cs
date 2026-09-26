@@ -1672,7 +1672,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private static string BuildUsageTooltip(TokenAccount account)
     {
-        return AccountUsageHelpers.UsageText(account, UsageDisplayMode.Used) + Environment.NewLine + "重置 " + AccountUsageHelpers.ResetText(account);
+        return AccountUsageHelpers.DetailsText(account, UsageDisplayMode.Used);
     }
 
     private static string FormatUsagePercent(double value)

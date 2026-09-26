@@ -16,5 +16,6 @@
     <Compile Include="../../windows/CodexBarWin/Services/TomlRootEditor.cs" Link="Services/TomlRootEditor.cs" />
     <Compile Include="../../windows/CodexBarWin/Models/AccountUsageHelpers.cs" Link="Models/AccountUsageHelpers.cs" />
     <Compile Include="../../windows/CodexBarWin/Services/OpenAIUsageService.cs" Link="Services/OpenAIUsageService.cs" />
+    <Compile Include="../../windows/CodexBarWin/Models/ResetCreditInfo.cs" Link="Models/ResetCreditInfo.cs" />
   </ItemGroup>
 </Project>

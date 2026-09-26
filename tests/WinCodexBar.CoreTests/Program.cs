@@ -50,6 +50,24 @@ try
     Check(AccountUsageHelpers.AverageText(new[] { weekly, both }, UsageDisplayMode.Used) == "5h 10.0% · 7d 31.0%", "averages exclude missing windows");
     Check(AccountUsageHelpers.Windows(new TokenAccount()).Count == 0, "unknown quota is not zero usage");
     Check(AccountUsageHelpers.Windows(JsonSerializer.Deserialize<TokenAccount>(JsonSerializer.Serialize(weekly))!).Single().Label == "7d", "window availability survives restart");
+    using var cards = JsonDocument.Parse("""{"available_count":3,"credits":[{"status":"available","expires_at":"2026-10-04T08:00:00Z"},{"status":"redeemed","expires_at":"2026-10-03T08:00:00Z"},{"status":"available","expires_at":null}]}""");
+    Check(OpenAIUsageService.ApplyResetCreditPayload(weekly, cards.RootElement), "read-only reset credit data parsed");
+    Check(weekly.ResetCreditsAvailable == 3 && weekly.ResetCreditDetails!.Count == 2, "credit count independent from capped detail list");
+    Check(weekly.ResetCreditDetails![0].ExpiresAt == DateTimeOffset.Parse("2026-10-04T08:00:00Z") && weekly.ResetCreditDetails[1].ExpirationKnown, "expiry instant and explicit unlimited expiry preserved");
+    var detailsText = AccountUsageHelpers.DetailsText(weekly, UsageDisplayMode.Used);
+    Check(detailsText.Contains("其余重置卡") && detailsText.Contains("无到期限制") && detailsText.Contains("2026-10-04"), "details show precise expiry and missing detail notice");
+    using var onlyCount = JsonDocument.Parse("""{"available_count":4}""");
+    OpenAIUsageService.ApplyResetCreditPayload(weekly, onlyCount.RootElement, details:false);
+    Check(weekly.ResetCreditsAvailable == 4 && weekly.ResetCreditDetailsStale, "changed count marks old expiry details as cached");
+    using var noCards = JsonDocument.Parse("""{"available_count":0,"credits":[]}""");
+    OpenAIUsageService.ApplyResetCreditPayload(weekly,noCards.RootElement);
+    Check(weekly.ResetCreditsAvailable == 0 && weekly.ResetCreditDetails!.Count == 0 && !weekly.ResetCreditDetailsStale, "zero credits clear stale expirations");
+    Check(AccountUsageHelpers.ExactTime(DateTimeOffset.Parse("2026-10-04T08:01:02Z")).Contains(":02 "), "exact times include seconds and UTC offset");
+    using var handler = new UsageFixtureHandler();
+    var reader = new OpenAIUsageService(new HttpClient(handler));
+    var fixtureAccount = new TokenAccount { AccessToken = "fixture-token", AccountId = "fixture-account" };
+    Check(await reader.RefreshUsageAsync(fixtureAccount) == UsageRefreshOutcome.Updated && fixtureAccount.ResetCreditsAvailable == 2, "usage refresh reads reset credit endpoint");
+    Check(handler.Requests.Any(r => r.EndsWith("/rate-limit-reset-credits")) && handler.OnlyGets, "reset credit integration sends GET requests only");
     var registry = new AccountRegistry();
     registry.UpsertAccount(new TokenAccount { AccountId = "fake-a", Email = "a@example.test" }, true);
     registry.UpsertAccount(new TokenAccount { AccountId = "fake-b", Email = "b@example.test" }, false);
@@ -87,3 +105,19 @@ try
     Console.WriteLine($"{passed} checks passed");
 }
 finally { Directory.Delete(scratch, true); }
+
+internal sealed class UsageFixtureHandler : HttpMessageHandler
+{
+    public List<string> Requests { get; } = new();
+    public bool OnlyGets { get; private set; } = true;
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        OnlyGets &= request.Method == HttpMethod.Get;
+        var path = request.RequestUri!.AbsolutePath; Requests.Add(path);
+        var json = path.EndsWith("/rate-limit-reset-credits")
+            ? """{"available_count":2,"credits":[{"status":"available","expires_at":"2026-10-04T08:00:00Z"}]}"""
+            : path.EndsWith("/usage") ? """{"rate_limit":{"primary_window":null,"secondary_window":{"used_percent":42,"limit_window_seconds":604800}},"rate_limit_reset_credits":{"available_count":2}}"""
+            : "{}";
+        return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(json) });
+    }
+}

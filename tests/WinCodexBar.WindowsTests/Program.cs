@@ -66,7 +66,7 @@ internal static class Program
             }
             AppAppearance.ScalePercent = 100;
             var registry = new AccountRegistry();
-            for (var i=0;i<6;i++) registry.UpsertAccount(new TokenAccount { AccountId="fake-"+i, Email=$"person-{i}@example.test", PrimaryWindowAvailable=i!=0, SecondaryWindowAvailable=true, PrimaryUsedPercent=12, SecondaryUsedPercent=42, SecondaryLimitWindowSeconds=604800 },i==0);
+            for (var i=0;i<6;i++) registry.UpsertAccount(new TokenAccount { AccountId="fake-"+i, Email=$"person-{i}@example.test", PrimaryWindowAvailable=i!=0, SecondaryWindowAvailable=true, PrimaryUsedPercent=12, SecondaryUsedPercent=42, SecondaryLimitWindowSeconds=604800, SecondaryResetAt=DateTimeOffset.Parse("2026-10-04T08:01:02Z"), ResetCreditsAvailable=3, ResetCreditsCheckedAt=DateTimeOffset.UtcNow, ResetCreditDetails=new() { new() { ExpirationKnown=true, ExpiresAt=DateTimeOffset.Parse("2026-10-04T08:00:00Z") }, new() { ExpirationKnown=true, ExpiresAt=DateTimeOffset.Parse("2026-10-05T08:00:00Z") } } },i==0);
             using (var dashboard = new CodexBarDashboardForm(registry,store,new UsageRefreshCoordinator(new OpenAIUsageService(),new OpenAIOAuthRefreshService(),registry),_=>{},()=>{},()=>{},()=>{},()=>{},()=>false,_=>{},_=>{}))
             {
                 dashboard.Show(); dashboard.Size=new Size(960,680); dashboard.ApplyAppearance(); Paint(dashboard,"dashboard.png");
@@ -74,6 +74,13 @@ internal static class Program
                     Check(button.Parent!.ClientRectangle.Contains(button.Bounds),"dashboard button reachable: "+button.Text);
                 dashboard.Close(); Check(!dashboard.Visible && !dashboard.IsDisposed,"dashboard close hides for reuse");
                 dashboard.Show(); Check(dashboard.Visible,"dashboard reopens");
+            }
+            using (var details = new AccountDetailsForm(registry.Accounts[0], UsageDisplayMode.Used))
+            {
+                details.Show(); Paint(details, "account-details.png");
+                Check(Descendants(details).OfType<Button>().All(b => b.Text == "关闭"), "account details has no credit redemption action");
+                Check(Descendants(details).OfType<TextBox>().Single().Text.Contains("2026-10-04"), "account details displays full expiry date");
+                details.Close();
             }
             TestPopup(registry);
             TestInstaller(home);

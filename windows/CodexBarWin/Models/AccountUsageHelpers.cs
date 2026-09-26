@@ -39,6 +39,48 @@ public static class AccountUsageHelpers
         return text.Length == 0 ? "用量未提供" : text;
     }
 
+    public static string ExactTime(DateTimeOffset? value) => value?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture) ?? "未提供";
+
+    public static string CreditSummary(TokenAccount account)
+    {
+        var count = account.ResetCreditsAvailable is { } n ? $"{n} 次" : "次数未提供";
+        var cached = account.ResetCreditDetailsStale || account.ResetCreditsCheckedAt is { } at && DateTimeOffset.UtcNow - at > TimeSpan.FromMinutes(10);
+        return "重置卡 " + count + (cached ? "（缓存）" : "");
+    }
+
+    public static string DetailsText(TokenAccount account, UsageDisplayMode mode)
+    {
+        var lines = new List<string> { DisplayName(account), "", "额度窗口" };
+        foreach (var window in Windows(account))
+        {
+            lines.Add($"{(window.Label == "5h" ? "5 小时" : "7 天")}：{FormatDisplayPercent(window.UsedPercent, mode)}（{(mode == UsageDisplayMode.Remaining ? "剩余" : "已用")}）");
+            lines.Add("重置时间：" + ExactTime(window.ResetAt));
+            lines.Add("倒计时：" + FormatResetCountdown(window.ResetAt));
+            lines.Add("");
+        }
+        if (Windows(account).Count == 0) lines.Add("额度数据未提供");
+        lines.Add(CreditSummary(account));
+        if (account.ResetCreditsAvailable != 0)
+        {
+            if (account.ResetCreditDetails is null) lines.Add("到期时间：未提供");
+            else
+            {
+                for (var i = 0; i < account.ResetCreditDetails.Count; i++)
+                {
+                    var credit = account.ResetCreditDetails[i];
+                    var expiry = !credit.ExpirationKnown ? "未提供" : credit.ExpiresAt is null ? "无到期限制" : ExactTime(credit.ExpiresAt);
+                    lines.Add($"第 {i + 1} 张到期：{expiry}");
+                }
+                if (account.ResetCreditDetails.Count < account.ResetCreditsAvailable)
+                    lines.Add("其余重置卡的到期时间未提供。");
+            }
+        }
+        lines.Add("");
+        lines.Add("时间按本机时区显示，末尾为 UTC 偏移。");
+        lines.Add("重置卡资料更新时间：" + ExactTime(account.ResetCreditsCheckedAt));
+        return string.Join(Environment.NewLine, lines);
+    }
+
     public static double Clamp(double value)
     {
         return double.IsFinite(value) ? Math.Clamp(value, 0, 100) : 0;
