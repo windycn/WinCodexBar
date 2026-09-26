@@ -39,6 +39,7 @@ internal static class Program
                 AppAppearance.ScalePercent = scale;
                 using var settings = new SettingsForm(store, wake, () => {}, () => {});
                 settings.Show();
+                if (scale == 100) ProbeFont(settings.Font);
                 Console.WriteLine($"Text font: {settings.Font.Name}; family: {settings.Font.FontFamily.Name}; style: {settings.Font.Style}; size: {settings.Font.Size}");
                 foreach (var size in new[] {new Size(800,600),new Size(1366,768),new Size(1920,1080)})
                 {
@@ -84,6 +85,23 @@ internal static class Program
             }
         }
     }
+    private static void ProbeFont(Font font)
+    {
+        using var probe = new Bitmap(700, 160);
+        using var g = Graphics.FromImage(probe);
+        g.Clear(Color.White);
+        using var large = new Font(font.FontFamily, 28, FontStyle.Regular, GraphicsUnit.Pixel);
+        g.DrawString("账号设置 Codex 123 (GDI+)", large, Brushes.Black, 10, 10);
+        TextRenderer.DrawText(g, "账号设置 Codex 123 (GDI)", large, new Point(10, 65), Color.Black);
+        probe.Save(Path.Combine(AppContext.BaseDirectory, "screenshots", "font-probe.png"));
+        var dc = g.GetHdc(); var handle = large.ToHfont(); var old = SelectObject(dc, handle);
+        var name = new System.Text.StringBuilder(128); GetTextFace(dc, name.Capacity, name);
+        Console.WriteLine("GDI actual font: " + name);
+        SelectObject(dc, old); DeleteObject(handle); g.ReleaseHdc(dc);
+    }
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] private static extern int GetTextFace(IntPtr dc, int count, System.Text.StringBuilder face);
     private static void TestPopup(AccountRegistry registry)
     {
         var deleted=false;
