@@ -31,6 +31,12 @@ public class TokenAccount
     [JsonPropertyName("plan_type")]
     public string PlanType { get; set; } = "free";
 
+    [JsonPropertyName("primary_window_available")]
+    public bool? PrimaryWindowAvailable { get; set; }
+
+    [JsonPropertyName("secondary_window_available")]
+    public bool? SecondaryWindowAvailable { get; set; }
+
     [JsonPropertyName("primary_used_percent")]
     public double PrimaryUsedPercent { get; set; }
 
@@ -48,6 +54,18 @@ public class TokenAccount
 
     [JsonPropertyName("secondary_limit_window_seconds")]
     public int? SecondaryLimitWindowSeconds { get; set; }
+
+    [JsonPropertyName("reset_credits_available")]
+    public int? ResetCreditsAvailable { get; set; }
+
+    [JsonPropertyName("reset_credit_details")]
+    public List<ResetCreditInfo>? ResetCreditDetails { get; set; }
+
+    [JsonPropertyName("reset_credits_checked_at")]
+    public DateTimeOffset? ResetCreditsCheckedAt { get; set; }
+
+    [JsonPropertyName("reset_credit_details_stale")]
+    public bool ResetCreditDetailsStale { get; set; }
 
     [JsonPropertyName("last_checked")]
     public DateTimeOffset? LastChecked { get; set; }

@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 namespace CodexBarWin.UI;
 
-public sealed class SettingsForm : Form
+public sealed class SettingsForm : AdaptiveForm
 {
     private enum Page
     {
@@ -16,12 +16,20 @@ public sealed class SettingsForm : Form
         Usage,
         Windows,
         Models,
+        Appearance,
     }
 
     private readonly CodexBarConfigStore _configStore;
     private readonly KeepAwakeService _keepAwakeService;
     private readonly Action _openConfigFolder;
     private readonly Action _onSettingsChanged;
+    private readonly Action _checkUpdates;
+    private TableLayoutPanel? _root;
+    private Panel? _navCard;
+    private TableLayoutPanel? _footer;
+    private TableLayoutPanel? _main;
+    private TableLayoutPanel? _header;
+    private readonly ComboBox _compactNavigation = new FluentComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly FlowLayoutPanel _sidebar = new();
     private readonly Panel _scrollHost = new();
     private readonly Panel _content = new();
@@ -32,7 +40,6 @@ public sealed class SettingsForm : Form
     private readonly Button _cancelButton = new FluentButton();
     private readonly Button _configButton = new FluentButton();
     private readonly ToolTip _toolTip = new();
-    private readonly Dictionary<Page, Control[]> _pageCache = new();
     private CodexBarConfig _draft;
     private Page _selectedPage = Page.Accounts;
 
@@ -40,8 +47,10 @@ public sealed class SettingsForm : Form
         CodexBarConfigStore configStore,
         KeepAwakeService keepAwakeService,
         Action openConfigFolder,
-        Action onSettingsChanged)
+        Action onSettingsChanged,
+        Action? checkUpdates = null)
     {
+        _checkUpdates = checkUpdates ?? (() => { });
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _keepAwakeService = keepAwakeService ?? throw new ArgumentNullException(nameof(keepAwakeService));
         _openConfigFolder = openConfigFolder ?? throw new ArgumentNullException(nameof(openConfigFolder));
@@ -53,9 +62,9 @@ public sealed class SettingsForm : Form
 
         Text = "WinCodexBar 设置";
         Font = FluentTheme.TextFontPx(14);
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1040, 720);
+        MinimumSize = new Size(480, 360);
         Size = new Size(1180, 780);
         BackColor = FluentTheme.LayerBackground;
         AppIconProvider.Apply(this);
@@ -75,18 +84,6 @@ public sealed class SettingsForm : Form
         if (disposing)
         {
             _toolTip.Dispose();
-            foreach (var controls in _pageCache.Values)
-            {
-                foreach (var control in controls)
-                {
-                    if (!control.IsDisposed)
-                    {
-                        control.Dispose();
-                    }
-                }
-            }
-
-            _pageCache.Clear();
         }
 
         base.Dispose(disposing);
@@ -94,19 +91,32 @@ public sealed class SettingsForm : Form
 
     private void BuildLayout()
     {
-        var root = new TableLayoutPanel
+        var root = _root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
             Padding = new Padding(16),
             ColumnCount = 2,
-            RowCount = 1,
+            RowCount = 2,
         };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 184));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        Controls.Add(root);
+        InstallScrollableContent(root, Size.Empty);
+        _compactNavigation.Items.AddRange(new object[] { "账号设置", "用量设置", "唤醒与更新", "模型参数", "外观与缩放" });
+        _compactNavigation.SelectedIndex = 0;
+        _compactNavigation.SelectedIndexChanged += (_, _) =>
+        {
+            if (_compactNavigation.SelectedIndex >= 0 && _selectedPage != (Page)_compactNavigation.SelectedIndex)
+                SelectPage((Page)_compactNavigation.SelectedIndex);
+        };
+        root.Controls.Add(_compactNavigation, 0, 0);
+        root.SetColumnSpan(_compactNavigation, 2);
+        ClientSizeChanged += (_, _) => LayoutResponsiveNavigation();
+        Shown += (_, _) => LayoutResponsiveNavigation();
 
-        var navCard = new Panel
+        var navCard = _navCard = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = FluentTheme.SubtleBackground,
@@ -114,7 +124,7 @@ public sealed class SettingsForm : Form
             Margin = new Padding(0, 0, 16, 0),
         };
         navCard.Paint += (_, e) => DrawRoundedPanel(e.Graphics, navCard.ClientRectangle, FluentTheme.SubtleBackground, FluentTheme.StrokeDefault, 8);
-        root.Controls.Add(navCard, 0, 0);
+        root.Controls.Add(navCard, 0, 1);
 
         _sidebar.Dock = DockStyle.Fill;
         _sidebar.BackColor = Color.Transparent;
@@ -123,28 +133,31 @@ public sealed class SettingsForm : Form
         navCard.Controls.Add(_sidebar);
         _sidebar.Controls.Add(MakeNavButton(Page.Accounts, FluentIcons.Account, "账号设置"));
         _sidebar.Controls.Add(MakeNavButton(Page.Usage, FluentIcons.Chart, "用量设置"));
-        _sidebar.Controls.Add(MakeNavButton(Page.Windows, FluentIcons.Power, "唤醒策略"));
+        _sidebar.Controls.Add(MakeNavButton(Page.Windows, FluentIcons.Power, "唤醒与更新"));
         _sidebar.Controls.Add(MakeNavButton(Page.Models, FluentIcons.Settings, "模型参数"));
+        _sidebar.Controls.Add(MakeNavButton(Page.Appearance, FluentIcons.Home, "外观与缩放"));
 
-        var main = new TableLayoutPanel
+        var main = _main = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
             ColumnCount = 1,
             RowCount = 3,
         };
+        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        root.Controls.Add(main, 1, 0);
+        root.Controls.Add(main, 1, 1);
 
-        var header = new TableLayoutPanel
+        var header = _header = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
             RowCount = 2,
             ColumnCount = 1,
         };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         header.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         header.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
         main.Controls.Add(header, 0, 0);
@@ -176,7 +189,7 @@ public sealed class SettingsForm : Form
         _content.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _scrollHost.Controls.Add(_content);
 
-        var footer = new TableLayoutPanel
+        var footer = _footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
@@ -184,6 +197,7 @@ public sealed class SettingsForm : Form
             RowCount = 1,
             Padding = new Padding(0, 12, 0, 0),
         };
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
@@ -219,6 +233,7 @@ public sealed class SettingsForm : Form
             Height = 42,
             Margin = new Padding(0, 0, 0, 6),
             Text = text,
+            IconGlyph = icon,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = FluentTheme.TextFontPx(16, FontStyle.Regular),
             FlatStyle = FlatStyle.Flat,
@@ -234,14 +249,17 @@ public sealed class SettingsForm : Form
     private void SelectPage(Page page)
     {
         _selectedPage = page;
+        _compactNavigation.SelectedIndex = (int)page;
         foreach (Button button in _sidebar.Controls.OfType<Button>())
         {
+            if (button is FluentButton nav) nav.NavigationSelected = false;
             button.BackColor = FluentTheme.SubtleBackground;
             button.ForeColor = FluentTheme.TextSecondary;
         }
 
         if ((int)page < _sidebar.Controls.Count && _sidebar.Controls[(int)page] is Button selected)
         {
+            if (selected is FluentButton nav) nav.NavigationSelected = true;
             selected.BackColor = Color.FromArgb(229, 240, 252);
             selected.ForeColor = FluentTheme.Accent;
         }
@@ -250,41 +268,43 @@ public sealed class SettingsForm : Form
         _content.SuspendLayout();
         _scrollHost.AutoScrollPosition = Point.Empty;
         _scrollHost.AutoScrollMinSize = Size.Empty;
+        foreach (Control old in _content.Controls.Cast<Control>().ToArray()) old.Dispose();
         _content.Controls.Clear();
         _content.Location = new Point(0, 0);
-        var useCachedPage = _pageCache.TryGetValue(page, out var cachedPageControls);
 
         switch (page)
         {
             case Page.Accounts:
                 _title.Text = "账号设置";
                 _subtitle.Text = "选择账号切换与路由方式。";
-                if (!useCachedPage) BuildAccountsPage();
+                BuildAccountsPage();
                 break;
             case Page.Usage:
                 _title.Text = "用量设置";
                 _subtitle.Text = "调整额度、Token 单位和刷新。";
-                if (!useCachedPage) BuildUsagePage();
+                BuildUsagePage();
                 break;
             case Page.Windows:
-                _title.Text = "唤醒策略";
-                _subtitle.Text = "控制防休眠和空闲保护。";
-                if (!useCachedPage) BuildWindowsPage();
+                _title.Text = "唤醒与更新";
+                _subtitle.Text = "管理更新、防休眠和空闲保护。";
+                BuildWindowsPage();
+                break;
+            case Page.Appearance:
+                _title.Text = "外观与缩放";
+                _subtitle.Text = "自动适配显示器，也可手动选择界面大小与托盘样式。";
+                BuildAppearancePage();
                 break;
             case Page.Models:
                 _title.Text = "模型参数";
                 _subtitle.Text = "配置默认模型与请求参数。";
-                if (!useCachedPage) BuildModelsPage();
+                BuildModelsPage();
                 break;
         }
 
-        if (useCachedPage && cachedPageControls is not null)
+        if (IsHandleCreated)
         {
-            _content.Controls.AddRange(cachedPageControls);
-        }
-        else
-        {
-            _pageCache[page] = _content.Controls.Cast<Control>().ToArray();
+            var scale = AppAppearance.ScaleFor(this);
+            foreach (Control card in _content.Controls) AppAppearance.ScaleTree(card, scale);
         }
 
         _content.ResumeLayout(true);
@@ -372,6 +392,8 @@ public sealed class SettingsForm : Form
 
     private void BuildWindowsPage()
     {
+        _content.Controls.Add(MakeCheckCard(FluentIcons.Refresh, "自动检查更新", "启动后与每 6 小时检查正式版；发现更新后提示，不会自行安装。", "自动检查", _draft.AutoCheckUpdates, value => _draft.AutoCheckUpdates = value));
+        _content.Controls.Add(MakeButtonCard(FluentIcons.Info, "版本 " + AppUpdateService.DisplayVersion, "校验安装包，备份账号与设置，然后覆盖程序并重启。", "检查更新", _checkUpdates));
         _content.Controls.Add(MakeCheckCard(
             FluentIcons.Power,
             "保持唤醒",
@@ -440,13 +462,28 @@ public sealed class SettingsForm : Form
             _openConfigFolder));
     }
 
+    private void BuildAppearancePage()
+    {
+        var scales = new[] { "跟随系统 DPI（推荐）", "100%", "125%", "150%", "175%", "200%", "250%", "300%" };
+        var scale = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        scale.Items.AddRange(scales);
+        scale.SelectedIndex = _draft.UiScalePercent == 0 ? 0 : Math.Max(0, Array.IndexOf(scales, _draft.UiScalePercent + "%"));
+        scale.SelectedIndexChanged += (_, _) => _draft.UiScalePercent = scale.SelectedIndex == 0 ? 0 : int.Parse(scale.Text.TrimEnd('%'));
+        _content.Controls.Add(MakeCard(FluentIcons.Settings, "界面缩放", "自动模式随显示器 DPI 切换。小屏内容可滚动；保存后立即生效。", scale));
+        var styles = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        styles.Items.AddRange(new object[] { "额度圆环", "剩余百分比", "经典应用图标" });
+        styles.SelectedIndex = _draft.TrayIconStyle switch { "percent" => 1, "classic" => 2, _ => 0 };
+        styles.SelectedIndexChanged += (_, _) => _draft.TrayIconStyle = styles.SelectedIndex switch { 1 => "percent", 2 => "classic", _ => "ring" };
+        _content.Controls.Add(MakeCard(FluentIcons.Info, "托盘样式", "优先显示 5 小时额度；没有时显示 7 天额度。圆环为已用，数字为剩余。", styles));
+    }
+
     private void BuildModelsPage()
     {
         _content.Controls.Add(MakeComboCard(
             FluentIcons.Settings,
             "默认模型",
             "Codex 默认使用的模型。",
-            CodexBarConfig.AvailableModels,
+            CodexModelCatalog.Models(),
             _draft.Global.DefaultModel,
             value => _draft.Global.DefaultModel = value));
 
@@ -454,7 +491,7 @@ public sealed class SettingsForm : Form
             FluentIcons.Chart,
             "Review 模型",
             "代码评审使用的模型。",
-            CodexBarConfig.AvailableModels,
+            CodexModelCatalog.Models(),
             _draft.Global.ReviewModel,
             value => _draft.Global.ReviewModel = value));
 
@@ -462,7 +499,7 @@ public sealed class SettingsForm : Form
             FluentIcons.Activity,
             "推理强度",
             "控制思考投入强度。",
-            CodexBarConfig.AvailableReasoningEfforts,
+            CodexModelCatalog.Efforts(_draft.Global.DefaultModel),
             _draft.Global.ReasoningEffort,
             value => _draft.Global.ReasoningEffort = value));
 
@@ -470,7 +507,7 @@ public sealed class SettingsForm : Form
             FluentIcons.Cloud,
             "服务等级",
             "选择请求服务等级。",
-            CodexBarConfig.AvailableServiceTiers,
+            CodexModelCatalog.Tiers(_draft.Global.DefaultModel),
             _draft.Global.ServiceTier,
             value => _draft.Global.ServiceTier = value));
     }
@@ -902,20 +939,72 @@ public sealed class SettingsForm : Form
         var card = new SettingCard(glyph, title, description)
         {
             Height = height,
+            LogicalMinimumHeight = height,
         };
         action.Margin = new Padding(0);
         card.Action = action;
         return card;
     }
 
+    public override void ApplyAppearance()
+    {
+        base.ApplyAppearance();
+        // Scale 会在布局事件之后继续调整列宽，必须在整棵控件树缩放结束后再定稿。
+        LayoutResponsiveNavigation();
+    }
+
+    private void LayoutResponsiveNavigation()
+    {
+        if (_root is null || _navCard is null) return;
+        var scale = AppAppearance.ScaleFor(this);
+        var compact = ClientSize.Width / scale < 980;
+        _root.SuspendLayout();
+        _root.ColumnStyles[0].Width = compact ? 0 : 184 * scale;
+        _root.RowStyles[0].Height = compact ? 44 * scale : 0;
+        _navCard.Visible = !compact;
+        _compactNavigation.Visible = compact;
+        if (_footer is not null)
+        {
+            var narrow = ClientSize.Width / scale < 600;
+            _saveStatusLabel.Visible = !narrow;
+            _footer.ColumnStyles[0].SizeType = narrow ? SizeType.Absolute : SizeType.Percent;
+            _footer.ColumnStyles[0].Width = narrow ? 0 : 100;
+            for (var i=1;i<4;i++)
+            {
+                _footer.ColumnStyles[i].SizeType = narrow ? SizeType.Percent : SizeType.Absolute;
+                _footer.ColumnStyles[i].Width = narrow ? 33.33f : (i==3 ? 118 : 92) * scale;
+            }
+        }
+        if (_main is not null && _header is not null)
+        {
+            var titlePixels = (compact ? 22 : 28) * scale;
+            if (Math.Abs(_title.Font.Size - titlePixels) > .1f)
+            {
+                _title.Font = FluentTheme.TextFontPx(titlePixels, FontStyle.Bold);
+            }
+            _header.RowStyles[0].Height = (compact ? 36 : 48) * scale;
+            _header.RowStyles[1].Height = (compact ? 44 : 56) * scale;
+            _main.RowStyles[0].Height = (compact ? 84 : 108) * scale;
+            _main.RowStyles[2].Height = 58 * scale;
+        }
+        _root.ResumeLayout(true);
+        _root.PerformLayout();
+        _main?.PerformLayout();
+        _header?.PerformLayout();
+        _footer?.PerformLayout();
+        ResizeCards();
+    }
+
     private void ResizeCards()
     {
-        var width = Math.Max(520, _scrollHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 10);
+        var width = Math.Max(1, _scrollHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - (int)(10 * AppAppearance.ScaleFor(this)));
         _content.SuspendLayout();
         _content.Width = width;
         var top = 0;
         foreach (Control control in _content.Controls)
         {
+            control.Width = width;
+            if (control is SettingCard card) card.Reflow();
             control.SetBounds(0, top, width, control.Height);
             top += control.Height + 12;
         }
@@ -931,9 +1020,18 @@ public sealed class SettingsForm : Form
             _draft.OpenAI.DangerThresholdPercent = Math.Min(100, _draft.OpenAI.WarningThresholdPercent + 10);
         }
 
+        if (_draft.Global.DefaultModel.StartsWith("gpt-6-astra", StringComparison.OrdinalIgnoreCase)
+            && _draft.Global.ReasoningEffort is "none" or "minimal")
+        {
+            MessageBox.Show(this, "GPT-6 Astra 的推理强度最低为 low，请调整后保存。", "模型参数", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         _draft.OpenAI.EnsurePricingDefaults();
         _configStore.Update(config =>
         {
+            config.UiScalePercent = _draft.UiScalePercent;
+            config.TrayIconStyle = _draft.TrayIconStyle;
+            config.AutoCheckUpdates = _draft.AutoCheckUpdates;
             config.Global.DefaultModel = _draft.Global.DefaultModel;
             config.Global.ReviewModel = _draft.Global.ReviewModel;
             config.Global.ReasoningEffort = _draft.Global.ReasoningEffort;
@@ -963,6 +1061,8 @@ public sealed class SettingsForm : Form
         _keepAwakeService.SetAdvancedEnabled(_draft.AdvancedKeepAwakeEnabled);
         StartupService.SetEnabled(_draft.StartWithWindows);
         _onSettingsChanged();
+        LayoutResponsiveNavigation();
+        SelectPage(_selectedPage);
         _saveStatusLabel.Text = $"已保存 · {DateTime.Now:HH:mm:ss}";
         _saveButton.Text = "已保存";
         var resetTimer = new System.Windows.Forms.Timer { Interval = 1600 };

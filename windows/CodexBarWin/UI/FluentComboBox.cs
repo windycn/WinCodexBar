@@ -16,6 +16,12 @@ internal sealed class FluentComboBox : ComboBox
         Cursor = Cursors.Hand;
     }
 
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        ItemHeight = Math.Max(24, Font.Height + 8);
+    }
+
     protected override void OnDrawItem(DrawItemEventArgs e)
     {
         e.DrawBackground();

@@ -21,10 +21,10 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private static readonly System.Collections.Generic.Dictionary<string, Image> TrayIconCache = new();
     private const int TrayMenuWidth = 480;
     private const int TrayVisibleAccountLimit = 8;
-    private static readonly Font TrayFont = new("Microsoft YaHei UI", 9f, FontStyle.Regular);
-    private static readonly Font TraySmallFont = new("Microsoft YaHei UI", 8.4f, FontStyle.Regular);
-    private static readonly Font TrayTinyFont = new("Microsoft YaHei UI", 8f, FontStyle.Regular);
-    private static readonly Font TrayTitleFont = new("Microsoft YaHei UI", 10.4f, FontStyle.Bold);
+    private static readonly Font TrayFont = FluentTheme.TextFontPx(12);
+    private static readonly Font TraySmallFont = FluentTheme.TextFontPx(11.2f);
+    private static readonly Font TrayTinyFont = FluentTheme.TextFontPx(10.7f);
+    private static readonly Font TrayTitleFont = FluentTheme.TextFontPx(14, FontStyle.Bold);
     private static readonly Font TrayMonoFont = new("Consolas", 8.2f, FontStyle.Regular);
     private static readonly Color TrayMenuBack = Color.FromArgb(248, 250, 252);
     private static readonly Color TrayCardBack = Color.FromArgb(255, 255, 255);
@@ -52,6 +52,16 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _autoRefreshTimer;
     private TrayPopupForm? _popupForm;
     private SettingsForm? _settingsForm;
+    private long _lastOutsideDismiss;
+    private TokenUsageSummary _popupTokenSummary;
+    private Task<TokenUsageSummary>? _popupScanTask;
+    private DateTimeOffset _popupScannedAt;
+    private string? _lastTrayIconKey;
+    private readonly AppUpdateService _updateService = new();
+    private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 30000 };
+    private bool _updateBusy;
+    private bool _isExiting;
+    private bool _updateAvailable;
     private bool _activeRefreshRunning;
     private bool _backgroundRefreshRunning;
 
@@ -60,6 +70,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
         _registry = new AccountRegistry();
         _configStore = new CodexBarConfigStore();
         _configStore.Load();
+        AppAppearance.ScalePercent = _configStore.Config.UiScalePercent;
         _registry.Load();
         StartupService.SetEnabled(_configStore.Config.StartWithWindows);
 
@@ -87,13 +98,27 @@ public sealed class CodexBarTrayContext : ApplicationContext
         ApplyGatewayMode();
         SyncActiveIfPossible();
         _ = RefreshUsageInBackgroundAsync(includeInactiveStale: true);
+        _updateTimer.Tick += async (_, _) =>
+        {
+            _updateTimer.Interval = 6 * 60 * 60 * 1000;
+            if (_configStore.Config.AutoCheckUpdates) await CheckForUpdatesAsync(false);
+        };
+        _updateTimer.Start();
+        _notifyIcon.BalloonTipClicked += async (_, _) => { if (_updateAvailable) await CheckForUpdatesAsync(true); };
         _notifyIcon.MouseClick += OnTrayIconMouseClick;
+        _notifyIcon.MouseDoubleClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left) return;
+            OpenDashboard();
+        };
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _isExiting = true;
+            _updateTimer.Dispose();
             _keepAwakeService.ClearForProcessExit();
             _autoRefreshTimer.Stop();
             _autoRefreshTimer.Dispose();
@@ -124,7 +149,8 @@ public sealed class CodexBarTrayContext : ApplicationContext
                     ExportAccountsFromDashboard,
                     OpenSettings,
                     IsAnyKeepAwakeEnabled,
-                    SetKeepAwakeEnabled
+                    SetKeepAwakeEnabled,
+                    DeleteAccountFromPopup
                 );
             }
 
@@ -134,7 +160,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private void RefreshDashboardIfCreated()
     {
-        if (_dashboardForm is { IsDisposed: false })
+        if (_dashboardForm is { IsDisposed: false, Visible: true })
         {
             _dashboardForm.RefreshData();
         }
@@ -161,7 +187,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         menu.Items.Add(CreateDisabledItem("WinCodexBar", "app"));
         menu.Items.Add(CreateDisabledItem(active is null ? "当前未激活账号" : $"当前：{TrimMiddle(BuildAccountLabel(active), 42)}", "star"));
-        menu.Items.Add(CreateDisabledItem($"账号 {_registry.Accounts.Count} · 主池 {FormatShortUsage(primaryAvg)} · 次池 {FormatShortUsage(secondaryAvg)}", "chart"));
+        menu.Items.Add(CreateDisabledItem($"账号 {_registry.Accounts.Count} · {AccountUsageHelpers.AverageText(_registry.Accounts, _configStore.Config.OpenAI.UsageDisplayMode)}", "chart"));
         menu.Items.Add(new ToolStripSeparator());
 
         if (_registry.Accounts.Count == 0)
@@ -179,7 +205,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             foreach (var account in accountsToShow)
             {
                 var isActive = string.Equals(_registry.ActiveAccountId, account.AccountId, StringComparison.Ordinal);
-                var text = $"{(isActive ? "✓ " : "  ")}{TrimMiddle(BuildAccountLabel(account), 38)}    {FormatShortUsage(account.PrimaryUsedPercent)} / {FormatShortUsage(account.SecondaryUsedPercent)}";
+                var text = $"{(isActive ? "✓ " : "  ")}{TrimMiddle(BuildAccountLabel(account), 38)}    {AccountUsageHelpers.UsageText(account, _configStore.Config.OpenAI.UsageDisplayMode)}";
                 var item = CreateActionItem(text, isActive ? "healthy" : "app", () => ActivateAccount(account));
                 item.Font = isActive ? new Font(TrayFont, FontStyle.Bold) : TrayFont;
                 item.ToolTipText = BuildUsageTooltip(account);
@@ -220,12 +246,14 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         menu.Items.Add(new ToolStripSeparator());
 
+        menu.Items.Add(CreateActionItem("检查更新 · v" + AppUpdateService.DisplayVersion, "refresh", async () => await CheckForUpdatesAsync(true)));
+
         var exitItem = CreateActionItem("退出", "unknown", ExitThread);
         menu.Items.Add(exitItem);
 
         menu.Opening += (_, _) =>
         {
-            _notifyIcon.Icon = CreateTrayIcon(ResolveTrayUsage());
+            UpdateTrayIcon();
             var currentActive = string.IsNullOrWhiteSpace(_registry.ActiveAccountId)
                 ? null
                 : _registry.Accounts.FirstOrDefault(a => string.Equals(a.AccountId, _registry.ActiveAccountId, StringComparison.Ordinal));
@@ -820,7 +848,8 @@ public sealed class CodexBarTrayContext : ApplicationContext
                 _configStore,
                 _keepAwakeService,
                 OpenConfigFolder,
-                OnSettingsChanged);
+                OnSettingsChanged,
+                async () => await CheckForUpdatesAsync(true));
         }
 
         _settingsForm.StartPosition = FormStartPosition.CenterScreen;
@@ -830,9 +859,59 @@ public sealed class CodexBarTrayContext : ApplicationContext
         _settingsForm.Activate();
     }
 
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (_updateBusy || _isExiting) return;
+        _updateBusy = true;
+        try
+        {
+            var update = await _updateService.CheckAsync();
+            if (_isExiting) return;
+            _updateAvailable = update is not null;
+            if (update is null)
+            {
+                if (manual) MessageBox.Show("当前已是最新正式版 v" + AppUpdateService.DisplayVersion, "WinCodexBar 更新");
+                return;
+            }
+            if (!manual)
+            {
+                _notifyIcon.ShowBalloonTip(5000, "WinCodexBar 新版本 " + update.Version, "点击下载更新；也可在设置中检查更新。", ToolTipIcon.Info);
+                return;
+            }
+            _popupForm?.Close();
+            IWin32Window? owner = _settingsForm is { IsDisposed: false, Visible: true } ? _settingsForm : _dashboardForm is { IsDisposed: false, Visible: true } ? _dashboardForm : null;
+            using var confirm = new ConfirmActionDialog("发现新版本 " + update.Version,
+                "将下载并校验安装包，备份账号和设置后更新并重启。不会删除 Codex 会话。", "更新并重启");
+            if ((owner is null ? confirm.ShowDialog() : confirm.ShowDialog(owner)) != DialogResult.OK) return;
+            using var cancellation = new System.Threading.CancellationTokenSource();
+            using var progress = new Form { Text = "WinCodexBar 更新", Width = 420, Height = 140,
+                StartPosition = FormStartPosition.CenterScreen, MaximizeBox = false, MinimizeBox = false };
+            progress.Controls.Add(new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
+                Text = "正在下载并校验，请稍候…\n关闭此窗口可取消，当前程序不会被修改。" });
+            progress.FormClosing += (_, _) => cancellation.Cancel();
+            progress.Show(owner);
+            string staged;
+            try { staged = await _updateService.DownloadAndVerifyAsync(update, cancellation.Token); cancellation.Token.ThrowIfCancellationRequested(); }
+            finally { progress.Close(); }
+            _updateService.StartInstaller(staged);
+            ExitThread();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            AppLogService.LogException(ex, "检查或安装更新");
+            if (manual && !_isExiting) MessageBox.Show("更新未完成：" + ex.Message + "\n当前程序和数据保留。可从发布页手动下载：\n" + AppUpdateService.ReleasesUrl, "WinCodexBar 更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally { _updateBusy = false; }
+    }
+
     private void OnSettingsChanged()
     {
+        AppAppearance.ScalePercent = _configStore.Config.UiScalePercent;
+        foreach (var form in Application.OpenForms.OfType<AdaptiveForm>().ToArray()) form.ApplyAppearance();
         ApplyAutoRefreshTimer();
+        ApplyGatewayMode();
+        SyncActiveIfPossible();
         RebuildMenu();
         RefreshDashboardIfCreated();
     }
@@ -846,7 +925,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             return;
         }
 
-        var interval = Math.Max(60, settings.AutoRefreshIntervalSeconds);
+        var interval = Math.Clamp(settings.AutoRefreshIntervalSeconds, 60, 86400);
         _autoRefreshTimer.Stop();
         _autoRefreshTimer.Interval = interval * 1000;
         _autoRefreshTimer.Start();
@@ -945,7 +1024,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             $"确定删除“{label}”吗？\n此操作只移除 WinCodexBar 保存的账号，不会删除 Codex 会话历史。",
             "删除");
 
-        IWin32Window? owner = _popupForm is { IsDisposed: false, Visible: true } ? _popupForm : null;
+        IWin32Window? owner = _popupForm is { IsDisposed: false, Visible: true } ? _popupForm : _dashboardForm is { IsDisposed: false, Visible: true } ? _dashboardForm : null;
         var result = owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
         if (result != DialogResult.OK)
         {
@@ -973,11 +1052,14 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private void OnTrayIconMouseClick(object? sender, MouseEventArgs e)
     {
-        if (e.Button != MouseButtons.Left)
-        {
-            return;
-        }
+        if (e.Button != MouseButtons.Left) return;
+        // 全局钩子在 MouseDown 收起弹窗，随后到达的托盘 MouseClick 不应重新打开。
+        if (Environment.TickCount64 - _lastOutsideDismiss < SystemInformation.DoubleClickTime) return;
+        ToggleTrayPopup();
+    }
 
+    private void ToggleTrayPopup()
+    {
         if (_popupForm is { IsDisposed: false, Visible: true })
         {
             _popupForm.Close();
@@ -986,7 +1068,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
         }
 
         _popupForm?.Dispose();
-        var tokenSummary = TokenUsageScanService.Scan();
+        var tokenSummary = _popupTokenSummary;
         _popupForm = new TrayPopupForm(
             _registry.Accounts,
             _registry.ActiveAccountId,
@@ -1006,17 +1088,38 @@ public sealed class CodexBarTrayContext : ApplicationContext
             RefreshSingleAccountFromPopup,
             DeleteAccountFromPopup,
             ExitThread);
-        _popupForm.FormClosed += (_, _) => _popupForm = null;
+        var popup = _popupForm;
+        popup.FormClosed += (_, _) =>
+        {
+            if (popup.ClosedByOutsideClick) _lastOutsideDismiss = Environment.TickCount64;
+            if (ReferenceEquals(_popupForm, popup)) _popupForm = null;
+        };
         _popupForm.ShowNearCursor();
+        _ = RefreshPopupTokensAsync(popup);
         _ = RefreshActiveAccountForPopupAsync();
         _ = RefreshCodexRadarForPopupAsync();
+    }
+
+    private async Task RefreshPopupTokensAsync(TrayPopupForm popup)
+    {
+        try
+        {
+            if (DateTimeOffset.UtcNow - _popupScannedAt < TimeSpan.FromSeconds(30)) return;
+            _popupScanTask ??= Task.Run(TokenUsageScanService.Scan);
+            var summary = await _popupScanTask;
+            _popupScanTask = null;
+            _popupScannedAt = DateTimeOffset.UtcNow;
+            _popupTokenSummary = summary;
+            if (!popup.IsDisposed) popup.UpdateSnapshot(_registry.ActiveAccountId, summary, _configStore.Config, _registry.Accounts);
+        }
+        catch (Exception ex) { _popupScanTask = null; AppLogService.LogException(ex, "扫描托盘 Token 用量"); }
     }
 
     private async Task RefreshCodexRadarForPopupAsync()
     {
         try
         {
-            var prediction = await _codexRadarService.GetCurrentAsync(forceRefresh: true).ConfigureAwait(true);
+            var prediction = await _codexRadarService.GetCurrentAsync(forceRefresh: false).ConfigureAwait(true);
             if (_popupForm is { IsDisposed: false, Visible: true })
             {
                 _popupForm.UpdateRadarPrediction(prediction);
@@ -1149,7 +1252,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             ? "WinCodexBar"
             : "WinCodexBar · 已激活账号";
         */
-        _notifyIcon.Icon = CreateTrayIcon(ResolveTrayUsage());
+        UpdateTrayIcon();
 
         RefreshDashboardIfCreated();
     }
@@ -1157,7 +1260,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private void RefreshShellOnly(bool refreshPopup = false)
     {
         _notifyIcon.Text = BuildTrayHoverText();
-        _notifyIcon.Icon = CreateTrayIcon(ResolveTrayUsage());
+        UpdateTrayIcon();
         if (refreshPopup && _popupForm is { IsDisposed: false, Visible: true })
         {
             _popupForm.UpdateSnapshot(_registry.ActiveAccountId, null, _configStore.Config, _registry.Accounts);
@@ -1234,7 +1337,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         var mode = _configStore.Config.OpenAI.UsageDisplayMode;
         var label = mode == UsageDisplayMode.Remaining ? "剩余" : "已用";
-        var text = $"{label} · 5h {AccountUsageHelpers.FormatDisplayPercent(active.PrimaryUsedPercent, mode)} · 7d {AccountUsageHelpers.FormatDisplayPercent(active.SecondaryUsedPercent, mode)}";
+        var text = $"{label} · {AccountUsageHelpers.UsageText(active, mode)}";
         return text.Length <= 63 ? text : text[..63];
     }
 
@@ -1269,13 +1372,13 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         if (!report.AnyChanged)
         {
-            _notifyIcon.Icon = CreateTrayIcon(ResolveTrayUsage());
+            UpdateTrayIcon();
             _notifyIcon.Text = BuildTrayHoverText();
             RefreshDashboardIfCreated();
             return;
         }
 
-        _notifyIcon.Icon = CreateTrayIcon(ResolveTrayUsage());
+        UpdateTrayIcon();
         _notifyIcon.Text = BuildTrayHoverText();
         RefreshDashboardIfCreated();
         RebuildMenu();
@@ -1317,11 +1420,12 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
         if (active is not null)
         {
-            return (active.PrimaryUsedPercent, active.SecondaryUsedPercent, true);
+            var windows = AccountUsageHelpers.Windows(active);
+            return (windows.FirstOrDefault()?.UsedPercent, windows.FirstOrDefault(w => w.Label == "7d")?.UsedPercent, true);
         }
 
         var (primaryAvg, secondaryAvg, _, _, _, _) = CalculateUsageStats(_registry.Accounts);
-        return (primaryAvg, secondaryAvg, false);
+        return (primaryAvg ?? secondaryAvg, secondaryAvg, false);
     }
 
     private static string BuildAccountLabel(TokenAccount account)
@@ -1340,15 +1444,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private static string BuildUsageText(TokenAccount account)
     {
-        var primary = NormalizeUsagePercent(account.PrimaryUsedPercent, "P");
-        var secondary = NormalizeUsagePercent(account.SecondaryUsedPercent, "S");
-
-        if (primary.hasValue == false && secondary.hasValue == false)
-        {
-            return "用量: 未统计";
-        }
-
-        return $"P:{BuildUsageBar(primary.percent)} {primary.valueText} | S:{BuildUsageBar(secondary.percent)} {secondary.valueText}";
+        return AccountUsageHelpers.UsageText(account, UsageDisplayMode.Used);
     }
 
     private static string BuildUsageBar(double? value, int width = 8)
@@ -1397,8 +1493,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             $"OpenAI ID: {account.OpenAIAccountId}",
             $"计划: {account.PlanType}",
             $"邮箱: {account.Email}",
-            $"主池: {(HasUsageValue(account.PrimaryUsedPercent) ? ClampUsage(account.PrimaryUsedPercent).ToString("F1", CultureInfo.InvariantCulture) + "%" : "--")}",
-            $"次池: {(HasUsageValue(account.SecondaryUsedPercent) ? ClampUsage(account.SecondaryUsedPercent).ToString("F1", CultureInfo.InvariantCulture) + "%" : "--")}",
+            AccountUsageHelpers.UsageText(account, UsageDisplayMode.Used),
             $"过期: {usedAt}",
         };
 
@@ -1408,12 +1503,12 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private static (double? avgPrimary, double? avgSecondary, double? minPrimary, double? minSecondary, double? maxPrimary, double? maxSecondary) CalculateUsageStats(IReadOnlyList<TokenAccount> accounts)
     {
         var primaryValues = accounts
-            .Select(a => a.PrimaryUsedPercent)
+            .SelectMany(AccountUsageHelpers.Windows).Where(w => w.Label == "5h").Select(w => w.UsedPercent)
             .Where(HasUsageValue)
             .Select(ClampUsage)
             .ToArray();
         var secondaryValues = accounts
-            .Select(a => a.SecondaryUsedPercent)
+            .SelectMany(AccountUsageHelpers.Windows).Where(w => w.Label == "7d").Select(w => w.UsedPercent)
             .Where(HasUsageValue)
             .Select(ClampUsage)
             .ToArray();
@@ -1481,12 +1576,25 @@ public sealed class CodexBarTrayContext : ApplicationContext
         return bitmap;
     }
 
-    private static Icon CreateTrayIcon((double? primary, double? secondary, bool hasActive) usage)
+    private void UpdateTrayIcon()
     {
-        var size = 32;
+        var usage = ResolveTrayUsage();
+        var key = $"{_configStore.Config.TrayIconStyle}:{usage.primary:F0}:{usage.hasActive}";
+        if (_lastTrayIconKey == key) return;
+        _lastTrayIconKey = key;
+        var previous = _notifyIcon.Icon;
+        _notifyIcon.Icon = CreateTrayIcon(usage);
+        previous?.Dispose();
+    }
+
+    private Icon CreateTrayIcon((double? primary, double? secondary, bool hasActive) usage)
+    {
+        if (_configStore.Config.TrayIconStyle == "classic") return AppIconProvider.CreateWindowIcon() ?? (Icon)SystemIcons.Application.Clone();
+        var size = 64;
         using var bmp = new Bitmap(size, size);
         using var g = Graphics.FromImage(bmp);
         g.Clear(Color.Transparent);
+        g.ScaleTransform(2, 2);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.CompositingQuality = CompositingQuality.HighQuality;
 
@@ -1523,6 +1631,16 @@ public sealed class CodexBarTrayContext : ApplicationContext
             g.FillEllipse(center, 11.5f, 11.5f, 9f, 9f);
         }
 
+        if (_configStore.Config.TrayIconStyle == "percent")
+        {
+            g.Clear(Color.Transparent);
+            using var bg = new SolidBrush(Color.FromArgb(245, 248, 252));
+            g.FillEllipse(bg, 0, 0, 32, 32);
+            using var font = new Font("Segoe UI", hasUsage && primary == 0 ? 13 : 17, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var brush = new SolidBrush(accent);
+            using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString(hasUsage ? Math.Round(100 - primary).ToString(CultureInfo.InvariantCulture) : "–", font, brush, new RectangleF(0, 0, 32, 32), format);
+        }
         var handle = bmp.GetHicon();
         try
         {
@@ -1554,22 +1672,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private static string BuildUsageTooltip(TokenAccount account)
     {
-        return string.Join(Environment.NewLine, new[]
-        {
-            $"5小时：{FormatUsagePercent(account.PrimaryUsedPercent)}",
-            $"7天：{FormatUsagePercent(account.SecondaryUsedPercent)}",
-            $"5小时重置：{FormatReset(account.PrimaryResetAt)}",
-            $"7天重置：{FormatReset(account.SecondaryResetAt)}",
-        });
-        /*
-        return string.Join(Environment.NewLine, new[]
-        {
-            $"主池：已用 {FormatUsagePercent(account.PrimaryUsedPercent)} · 剩余 {FormatRemainingPercent(account.PrimaryUsedPercent)}",
-            $"次池：已用 {FormatUsagePercent(account.SecondaryUsedPercent)} · 剩余 {FormatRemainingPercent(account.SecondaryUsedPercent)}",
-            $"主池重置：{FormatReset(account.PrimaryResetAt)}",
-            $"次池重置：{FormatReset(account.SecondaryResetAt)}",
-        });
-        */
+        return AccountUsageHelpers.DetailsText(account, UsageDisplayMode.Used);
     }
 
     private static string FormatUsagePercent(double value)

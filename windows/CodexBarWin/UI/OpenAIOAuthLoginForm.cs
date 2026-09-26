@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 namespace CodexBarWin.UI;
 
-public sealed class OpenAIOAuthLoginForm : Form
+public sealed class OpenAIOAuthLoginForm : AdaptiveForm
 {
     private readonly OpenAIOAuthLoginService _loginService;
     private readonly TextBox _authUrlBox = new();
@@ -79,7 +79,7 @@ public sealed class OpenAIOAuthLoginForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-        Controls.Add(root);
+        InstallScrollableContent(root, new Size(600, 440));
 
         root.Controls.Add(new Label
         {

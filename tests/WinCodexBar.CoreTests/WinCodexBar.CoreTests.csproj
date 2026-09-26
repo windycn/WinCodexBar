@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../windows/CodexBarWin/Models/CodexBarConfig.cs" Link="Models/CodexBarConfig.cs" />
+    <Compile Include="../../windows/CodexBarWin/Models/TokenAccount.cs" Link="Models/TokenAccount.cs" />
+    <Compile Include="../../windows/CodexBarWin/Interop/OpenAIAccountInteropService.cs" Link="Interop/OpenAIAccountInteropService.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/AccountRegistry.cs" Link="Services/AccountRegistry.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/CodexBarConfigStore.cs" Link="Services/CodexBarConfigStore.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/CodexPaths.cs" Link="Services/CodexPaths.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/AtomicFile.cs" Link="Services/AtomicFile.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/AppLogService.cs" Link="Services/AppLogService.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/AppUpdateService.cs" Link="Services/AppUpdateService.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/CodexRadarService.cs" Link="Services/CodexRadarService.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/CodexModelCatalog.cs" Link="Services/CodexModelCatalog.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/AppDataMigration.cs" Link="Services/AppDataMigration.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/TomlRootEditor.cs" Link="Services/TomlRootEditor.cs" />
+    <Compile Include="../../windows/CodexBarWin/Models/AccountUsageHelpers.cs" Link="Models/AccountUsageHelpers.cs" />
+    <Compile Include="../../windows/CodexBarWin/Services/OpenAIUsageService.cs" Link="Services/OpenAIUsageService.cs" />
+    <Compile Include="../../windows/CodexBarWin/Models/ResetCreditInfo.cs" Link="Models/ResetCreditInfo.cs" />
+  </ItemGroup>
+</Project>

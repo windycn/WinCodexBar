@@ -185,8 +185,9 @@ public sealed class UsageStatsForm : Form
         row.Controls.Add(title);
         row.Controls.Add(plan);
         row.Controls.Add(statusLabel);
-        row.Controls.Add(BuildUsageLine("5h 主池", account.PrimaryUsedPercent, account.PrimaryResetAt, new Point(16, 56), row.Width - 32, accent));
-        row.Controls.Add(BuildUsageLine("7d 次池", account.SecondaryUsedPercent, account.SecondaryResetAt, new Point(16, 80), row.Width - 32, accent));
+        var windows = AccountUsageHelpers.Windows(account);
+        for (var i = 0; i < windows.Count; i++)
+            row.Controls.Add(BuildUsageLine(windows[i].Label, windows[i].UsedPercent, windows[i].ResetAt, new Point(16, 56 + i * 24), row.Width - 32, accent));
         return row;
     }
 
@@ -253,11 +254,7 @@ public sealed class UsageStatsForm : Form
             return "暂无数据";
         }
 
-        var primary = _accounts.Select(a => AccountUsageHelpers.Clamp(a.PrimaryUsedPercent)).Average();
-        var secondary = _accounts.Select(a => AccountUsageHelpers.Clamp(a.SecondaryUsedPercent)).Average();
-        var primaryDisplay = AccountUsageHelpers.DisplayPercent(primary, _config.OpenAI.UsageDisplayMode);
-        var secondaryDisplay = AccountUsageHelpers.DisplayPercent(secondary, _config.OpenAI.UsageDisplayMode);
-        return $"5h {primaryDisplay:F1}%  ·  7d {secondaryDisplay:F1}%";
+        return AccountUsageHelpers.AverageText(_accounts, _config.OpenAI.UsageDisplayMode);
     }
 
     private static Color HealthAccent(AccountHealthStatus status)

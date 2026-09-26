@@ -62,6 +62,8 @@ public sealed class OpenAIUsageService
         account.TokenExpired = false;
         account.LastChecked = DateTimeOffset.UtcNow;
 
+        var creditsTask = RefreshResetCreditsAsync(account, cancellationToken);
+
         try
         {
             var orgName = await FetchOrgNameAsync(account, cancellationToken).ConfigureAwait(false);
@@ -75,6 +77,7 @@ public sealed class OpenAIUsageService
             // 组织名属于增益信息，失败时静默。
         }
 
+        await creditsTask.ConfigureAwait(false);
         return UsageRefreshOutcome.Updated;
     }
 
@@ -103,6 +106,29 @@ public sealed class OpenAIUsageService
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
             var root = document.RootElement;
 
+            ApplyUsagePayload(account, root);
+
+            return UsageRefreshOutcome.Updated;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return UsageRefreshOutcome.Failed;
+        }
+    }
+
+    public static void ApplyUsagePayload(TokenAccount account, JsonElement root)
+    {
+        if (root.TryGetProperty("rate_limit_reset_credits", out var resetCredits) || root.TryGetProperty("rateLimitResetCredits", out resetCredits))
+            ApplyResetCreditPayload(account, resetCredits, details: false);
+        account.PrimaryWindowAvailable = false;
+        account.SecondaryWindowAvailable = false;
+        account.PrimaryUsedPercent = account.SecondaryUsedPercent = 0;
+        account.PrimaryResetAt = account.SecondaryResetAt = null;
+        account.PrimaryLimitWindowSeconds = account.SecondaryLimitWindowSeconds = null;
             if (root.TryGetProperty("plan_type", out var planNode) && planNode.ValueKind == JsonValueKind.String)
             {
                 var plan = planNode.GetString();
@@ -124,16 +150,71 @@ public sealed class OpenAIUsageService
                 ApplyCodexWindow(rateLimits, "secondary", primary: false, account);
             }
 
-            return UsageRefreshOutcome.Updated;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    }
+
+    // 只读重置卡资料；本程序不提供任何使用、兑换或消耗重置卡的接口。
+    private async Task RefreshResetCreditsAsync(TokenAccount account, CancellationToken cancellationToken)
+    {
+        if (!account.ResetCreditDetailsStale && account.ResetCreditsCheckedAt is { } checkedAt
+            && DateTimeOffset.UtcNow - checkedAt < TimeSpan.FromMinutes(5)) return;
+        try
         {
-            throw;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(6));
+            using var request = BuildAuthorizedRequest(HttpMethod.Get, new Uri("https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"), account);
+            request.Headers.TryAddWithoutValidation("OpenAI-Beta", "codex-1");
+            using var response = await _httpClient.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false));
+            if (!ApplyResetCreditPayload(account, document.RootElement)) throw new JsonException("重置卡数据缺少字段");
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch { account.ResetCreditDetailsStale = true; }
+    }
+
+    public static bool ApplyResetCreditPayload(TokenAccount account, JsonElement root, bool details = true)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return false;
+        var count = ReadInt(root, "available_count") ?? ReadInt(root, "availableCount");
+        if (count is >= 0)
         {
-            return UsageRefreshOutcome.Failed;
+            if (account.ResetCreditsAvailable != count) account.ResetCreditDetailsStale = true;
+            account.ResetCreditsAvailable = count;
+            if (count == 0)
+            {
+                account.ResetCreditDetails = new();
+                account.ResetCreditDetailsStale = false;
+                account.ResetCreditsCheckedAt = DateTimeOffset.UtcNow;
+            }
         }
+        if (!details) return count is >= 0;
+        if (root.TryGetProperty("credits", out var credits) && credits.ValueKind == JsonValueKind.Array)
+        {
+            var items = new List<ResetCreditInfo>();
+            foreach (var credit in credits.EnumerateArray())
+            {
+                if (credit.ValueKind != JsonValueKind.Object || !credit.TryGetProperty("status", out var status)
+                    || status.ValueKind != JsonValueKind.String || status.GetString() != "available") continue;
+                var known = credit.TryGetProperty("expires_at", out var expires) || credit.TryGetProperty("expiresAt", out expires);
+                DateTimeOffset? at = null;
+                if (known && expires.ValueKind != JsonValueKind.Null)
+                {
+                    if (expires.ValueKind == JsonValueKind.Number && expires.TryGetInt64(out var unix))
+                    {
+                        try { at = DateTimeOffset.FromUnixTimeSeconds(unix); } catch (ArgumentOutOfRangeException) { known = false; }
+                    }
+                    else if (expires.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(expires.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) at = parsed;
+                    else known = false;
+                }
+                items.Add(new ResetCreditInfo { ExpiresAt = at, ExpirationKnown = known });
+            }
+            account.ResetCreditDetails = items.OrderBy(c => c.ExpiresAt ?? DateTimeOffset.MaxValue).ToList();
+            account.ResetCreditDetailsStale = false;
+            account.ResetCreditsCheckedAt = DateTimeOffset.UtcNow;
+            return true;
+        }
+        account.ResetCreditDetailsStale = account.ResetCreditsAvailable != 0;
+        return count is >= 0;
     }
 
     private async Task<string?> FetchOrgNameAsync(TokenAccount account, CancellationToken cancellationToken)
@@ -207,14 +288,16 @@ public sealed class OpenAIUsageService
         var resetAt = ReadUnixTime(window, "reset_at") ?? ReadResetAfter(window, "reset_after_seconds");
         var windowSeconds = ReadInt(window, "limit_window_seconds");
 
-        if (used is not null)
+        if (used is not null && double.IsFinite(used.Value) && used.Value >= 0)
         {
             if (primary)
             {
+                account.PrimaryWindowAvailable = true;
                 account.PrimaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
             else
             {
+                account.SecondaryWindowAvailable = true;
                 account.SecondaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
         }
@@ -248,14 +331,16 @@ public sealed class OpenAIUsageService
             windowSeconds = minutes * 60;
         }
 
-        if (used is not null)
+        if (used is not null && double.IsFinite(used.Value) && used.Value >= 0)
         {
             if (primary)
             {
+                account.PrimaryWindowAvailable = true;
                 account.PrimaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
             else
             {
+                account.SecondaryWindowAvailable = true;
                 account.SecondaryUsedPercent = Math.Clamp(used.Value, 0, 100);
             }
         }

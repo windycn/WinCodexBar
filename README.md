@@ -1,176 +1,78 @@
 # WinCodexBar
 
-[English](./README.en.md)
+[English](./README.en.md) · [下载最新版](https://github.com/windycn/WinCodexBar/releases/latest) · [更新记录](./CHANGELOG.md)
 
-> 面向 Windows 的 Codex 托盘工作台：管理多个 OpenAI OAuth 账号，查看 5 小时 / 7 天额度，分析本地 Token 活动，并通过聚合模式让多账号使用更连续。
->
-> English: A Windows tray workspace for Codex multi-account management, quota visibility, local token activity, and aggregate account routing.
+Windows 上的 Codex 托盘工作台：管理多账号、查看额度、切换模型、分析本地用量。
 
-## 项目简介 / About
+## 0.2.0 有什么变化
 
-WinCodexBar 是一个专为 Windows Codex 用户准备的托盘工具。它把多账号管理、额度监控、Token 活动、会话分析、导入导出、保持唤醒和聚合路由放在一个轻量界面里，减少反复切换账号、修改配置和检查用量带来的中断。
+- **屏幕适配**：默认跟随当前显示器 DPI；也可选择 100%–300% 手动缩放。窗口限制在屏幕工作区内，窄屏设置卡片上下排列，超出内容可滚动。
+- **字体与图标**：随包提供中文无衬线字体与 Microsoft Fluent UI System Icons，减少系统字体缺失引起的回退和字形差异。窄屏导航自动收起为分类下拉框，设置页无横向滚动。
+- 重置卡只读展示剩余次数、各张到期时间；账号详情显示精确额度重置日期、时间与时区。不提供使用或兑换重置卡的功能。
+- 额度按账号实际提供的窗口显示；没有 5 小时额度时只显示 7 天额度，托盘图标同步使用 7 天数据。缺失数据与真实 0% 分开处理。
+- **托盘样式**：额度圆环、剩余百分比、经典应用图标。单击立即打开快捷面板，双击打开工作台；Esc 收起面板。
+- **交互修复**：删除确认不再被外部点击检测误关；滚动后的隐藏账号区域不再响应点击；打开设置、查看统计与关闭面板按顺序执行。
+- **更新更方便**：启动后和每 6 小时自动检查正式版，也可手动检查。用户确认后下载对应架构包、校验 SHA256、备份数据、覆盖程序并重启。覆盖失败尝试回滚，保留日志与旧程序备份。
+- **模型**：内置 GPT-6 Astra / Sol / Luna，并合并本机 Codex 模型缓存中的模型、推理强度与服务档位。支持手填模型 ID，升级保留已有选择。
+- **重置窗口**：读取 CodexRadar 公开摘要中的当前窗口状态，旧预测不会盖过已开启的窗口。显示来源，点击可查看网站；这不是个人账号已重置的证明。
 
-English: WinCodexBar is a Windows tray app for Codex users. It brings multi-account management, quota tracking, token activity, session analysis, import/export, keep-awake controls, and aggregate account routing into one lightweight desktop workflow.
+## 下载与运行
 
-## 核心价值
+在 [Releases](https://github.com/windycn/WinCodexBar/releases/latest) 下载与你的系统匹配的 ZIP：
 
-### 聚合模式让账号切换更连续
+| 安装包 | 适用设备 |
+| --- | --- |
+| `WinCodexBar-0.2.0-win-x64.zip` | Intel / AMD 64 位 Windows |
+| `WinCodexBar-0.2.0-win-arm64.zip` | Windows on ARM |
+| `WinCodexBar-0.2.0-win-x86.zip` | 32 位 Windows |
 
-聚合模式会启动一个本地账号网关，把多个 OpenAI OAuth 账号作为账号池管理。新的 Codex 实例接入本地网关后，账号选择和请求路由交给 WinCodexBar 处理，不需要你频繁手动修改每个项目里的账号配置。
+解压到独立、可写的文件夹，运行 `WinCodexBar.exe`。发布包自带 .NET 运行时。不要直接在 ZIP 内运行；自动更新需要对程序目录有写入权限。
 
-这对多项目和长会话尤其有用：你可以在一个地方查看所有账号额度，选择更健康的账号继续工作。已经接入聚合网关的新 Codex 实例可以跟随路由策略使用账号；如果某个 Codex 实例是在开启聚合模式之前启动的，通常需要重启 Codex 或新开实例后才会接入本地网关。
+首次从 0.1.x 升级：先退出旧程序，再解压覆盖或运行新目录中的程序。旧版没有自动更新入口，升级到 0.2.0 后即可使用。程序只允许一个实例运行。
 
-### 切换账号不等于丢失项目会话
+## 日常使用
 
-WinCodexBar 切换的是 OAuth 身份和请求路由，不会主动清空你的项目目录、本地会话记录或 Codex 的项目上下文文件。你可以把账号理解为“请求身份”，把项目会话理解为“本地工作记忆”：WinCodexBar 改前者，不会删除后者。
+- **托盘**：查看当前账号的 5 小时 / 7 天额度、重置时间，刷新或切换账号。
+- **工作台**：添加、导入、导出、切换、删除账号；查看 Token 活动和本地会话分析。
+- **设置 → 外观与缩放**：自动 / 手动缩放、托盘样式，保存后生效。
+- **设置 → 唤醒与更新**：保持唤醒、高级防休眠、开机启动、自动检查与手动检查更新。
+- **设置 → 模型参数**：默认模型、Review 模型、推理强度和服务等级。模型实际可用性由账号与 Codex 版本决定。
+- **设置 → 账号设置**：手动模式 / 聚合模式。手动切换同步登录配置；已运行的 Codex 通常需要重启或新开实例。聚合模式把后续请求交给本地账号网关，正在运行的响应流不被中途切换。
 
-实际使用时，如果你在手动模式下切换账号，已运行的 Codex 实例通常需要重启或新开一次，才能使用新的账号配置；聚合模式则把后续账号路由集中到本地网关里处理。
+关闭工作台会收回托盘；彻底退出请使用托盘菜单的“退出”。高级防休眠会模拟轻微鼠标移动，可单独关闭。
 
-### 额度和用量一眼看清
+## 更新、数据与备份
 
-托盘图标用圆环显示近 5 小时额度状态；菜单和工作台展示 5 小时 / 7 天额度、健康状态、预计重置时间，以及今日、本周、本月和累计 Token 活动。你不用等到请求失败才发现账号已经接近额度耗尽。
+账号与设置保存在 `%USERPROFILE%\.codexbar`，不在程序目录；设置 `CODEXBAR_HOME` 时使用该目录下的 `.codexbar`。升级保留旧模型、价格和外观设置，补充缺失的新字段。
 
-## 界面预览
+- 每个新版本首次启动，在 `.codexbar\backups\before-版本-时间` 备份现有账号与设置。
+- 自动覆盖更新前，另行备份到 `.codexbar\backups\before-update-时间`。
+- 更新包及程序回滚备份保存在 `%LOCALAPPDATA%\WinCodexBar\updates\随机目录`，内有 `result.txt` 和 `previous-program`。
+- 覆盖失败会尝试恢复被修改文件；若目录权限或文件占用阻止恢复，可退出应用后从 `previous-program` 手动还原。自动回滚针对文件替换失败，不等同于检测新版本的全部运行问题。
+- 恢复账号或设置时，先退出程序，再将备份中的 JSON 放回 `.codexbar`。备份和导出文件含登录凭证，不要公开分享。
+- 更新与删除账号不会删除 `.codex\sessions` 或 `.codex\archived_sessions`。删除账号仅从 WinCodexBar 账号池移除，不代表撤销远端登录或清除其他客户端的登录状态。
 
-### 托盘菜单
+自动检查只读取本仓库公开 Release 元数据，不上传账号或会话。发现新版本会通知，**不会未经确认自动安装**。网络不可用时继续使用当前版本。
 
-轻量弹出菜单用于快速查看当前账号、额度、订阅类型和账号池状态，也可以直接切换模式、添加账号、打开工作台或进入设置。
+## 统计与信息来源
 
-<p>
-  <img src="./assets/screenshots/tray-menu.png" alt="WinCodexBar 托盘菜单" width="420">
-</p>
+Token 活动来自本地 Codex 会话文件；金额是按所选价格预设计算的估值，不是账单，也不能反推订阅额度。GPT-6 内置价格采用标准短上下文价格，不包含 Fast、长上下文、缓存写入等附加规则。
 
-### 工作台
+模型资料：[OpenAI 模型目录](https://developers.openai.com/api/docs/models)。重置窗口数据来自 [Codex 雷达 codexradar.com](https://codexradar.com/) 的公开摘要，三分钟缓存；完整 API 需站方授权，本程序不请求受保护的完整接口。
 
-工作台提供账号列表、Token 活动、会话分析和成本估算。柱状图和热力图用于快速观察今日、本周、本月和累计 Token 使用情况。
+## 构建与验证
 
-<p>
-  <img src="./assets/screenshots/dashboard-token-activity.png" alt="WinCodexBar 工作台 Token 活动" width="860">
-</p>
-
-### 设置页
-
-设置页集中配置账号模式、用量显示、唤醒策略和模型参数。唤醒策略支持系统保持唤醒和高级防休眠。
-
-<p>
-  <img src="./assets/screenshots/settings-wake-strategy.png" alt="WinCodexBar 唤醒策略设置" width="820">
-</p>
-
-## 解决什么问题
-
-当你同时使用多个 OpenAI 账号时，常见问题通常是：
-
-- 不知道当前账号的 5 小时 / 7 天额度还剩多少。
-- 手动改配置容易出错，也不方便回到上一个账号。
-- 多项目同时使用 Codex 时，账号切换会打断工作流。
-- 多账号导入、备份和迁移不够顺手。
-- 长时间编码时 Windows 休眠或锁屏会打断节奏。
-- 本地会话 Token 用量、今日/本周/本月趋势不够直观。
-
-WinCodexBar 把这些能力集中在托盘菜单、工作台和设置页里，适合长时间使用 Codex 的 Windows 用户。
-
-## 主要功能
-
-### 托盘菜单
-
-- 单击托盘图标打开快捷菜单。
-- 双击可打开工作台。
-- 托盘图标使用近 5 小时额度圆环显示当前账号状态。
-- 鼠标悬停托盘图标可查看当前 5 小时 / 7 天额度。
-- 点击菜单外部自动收起。
-
-### 多账号管理
-
-- 添加 OpenAI OAuth 账号。
-- 支持浏览器授权回调自动捕获。
-- 自动捕获失败时，可手动粘贴浏览器地址栏中的回调 URL。
-- 导入 / 导出多账号文件，方便备份和迁移。
-- 删除账号前会进行二次确认。
-- 当前账号切换后会同步到 Codex 配置。
-
-### 手动模式与聚合模式
-
-- 手动模式：点击账号后写入当前账号配置，已运行的 Codex 实例通常需要重启后才会使用新账号。
-- 聚合模式：启动本地账号网关，让新的 Codex 实例通过本地地址进行账号路由。
-- 聚合模式适合多项目、多账号和长会话场景，可以减少反复编辑账号配置带来的中断。
-- 如果 Codex 是开启聚合模式之前已经打开的实例，通常需要重启 Codex 或新开实例后才会接入聚合路由。
-
-### 额度显示
-
-- 展示每个账号的订阅类型、健康状态、5 小时额度和 7 天额度。
-- 可在设置中选择显示“已用额度”或“剩余额度”。
-- 可在设置中选择 Token 数字单位：中文单位或 K/M/B。
-- 剩余额度低于 30% 显示橙色，低于 10% 显示红色。
-- 可查看预计重置时间，包含倒计时和具体日期时间。
-
-### 工作台
-
-- 汇总账号数量、当前账号、额度状态和健康状态。
-- 显示全部账号列表，支持刷新、切换和查看状态。
-- Token 活动页展示今日、本周、本月柱状图和累计热力图。
-- 会话分析页展示本地会话数量、活跃/归档情况、Token 最高会话和最近会话。
-- Token 成本可按模型价格预设估算美元和人民币金额。
-
-### 防休眠
-
-- 保持唤醒：调用 Windows 系统能力阻止休眠和息屏。
-- 高级防休眠：空闲后模拟轻微鼠标移动，可配置空闲阈值、触发间隔、抖动时间和移动策略。
-- 可设置全屏时暂停高级防休眠。
-- 支持随 Windows 开机启动。
-
-### 设置
-
-- 账号设置：切换手动 / 聚合模式。
-- 用量设置：切换额度显示方式、Token 单位、自动刷新间隔、健康阈值和价格预设。
-- 唤醒策略：配置保持唤醒、高级防休眠和开机启动。
-- 模型参数：配置默认模型、Review 模型、reasoning effort 和 service tier。
-
-## 安装与运行
-
-从发布包中选择与你的系统架构匹配的版本：
-
-- `WinCodexBar-0.1.1-win-x64.zip`：大多数 Intel / AMD 64 位 Windows 设备。
-- `WinCodexBar-0.1.1-win-x86.zip`：旧的 32 位 Windows 设备。
-- `WinCodexBar-0.1.1-win-arm64.zip`：Windows on ARM 设备。
-
-解压后运行 `WinCodexBar.exe`。首次运行后会出现在系统托盘区域。
-
-## 本地构建
-
-需要 .NET 8 SDK。
+需要 .NET 8 SDK。Windows 可运行完整窗口回归；其他系统可交叉编译 Windows 程序并运行核心回归。
 
 ```powershell
-dotnet restore windows\CodexBarWin\CodexBarWin.csproj
-dotnet build windows\CodexBarWin\CodexBarWin.csproj -c Release
+dotnet build windows/CodexBarWin/CodexBarWin.csproj -c Release
+dotnet run --project tests/WinCodexBar.CoreTests -c Release
+dotnet run --project tests/WinCodexBar.WindowsTests -c Release
+dotnet publish windows/CodexBarWin/CodexBarWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
-发布单文件执行包示例：
-
-```powershell
-dotnet publish windows\CodexBarWin\CodexBarWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-```
-
-## 数据与隐私
-
-- 账号数据默认保存在本机配置目录。
-- 应用不会在日志、界面或导出说明中显示 access token、refresh token 或 id token。
-- 导出的账号文件属于敏感数据，请妥善保存，不要公开上传。
-- Token 活动和会话分析来自本地 Codex 会话文件，仅用于本机展示和估算。
-
-## 注意事项
-
-- 切换账号不会删除项目文件或本地会话记录，但已运行的 Codex 实例可能仍使用旧账号；需要重启 Codex 或新开实例才能确保使用新账号。
-- 聚合模式需要 Codex 使用本地网关地址；切换前已经打开的 Codex 实例通常不会自动接入。
-- 金额统计是基于本地 Token 和价格预设的估算，不等于官方账单。
-- 高级防休眠会模拟轻微鼠标移动，请根据自己的使用场景谨慎开启。
-- 如果 Windows 安全软件拦截单文件执行包，请确认文件来源后再放行。
-
-## 版本
-
-当前版本：`0.1.1`
-
-更新内容见 [CHANGELOG.md](./CHANGELOG.md)。
+Windows 回归覆盖设置卡片、手动缩放、窗口开关、删除确认和真实 PowerShell 更新脚本。测试使用临时数据目录与虚构账号，不连接真实账号。多台实体显示器之间的热插拔、不同显卡与 Windows 主题仍建议在实际设备上验收。
 
 ## License
 
-本项目使用 MIT License。详见 [LICENSE](./LICENSE)。
+[MIT](./LICENSE) · [第三方组件声明](./THIRD_PARTY_NOTICES.md)

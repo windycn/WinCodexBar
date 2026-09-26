@@ -12,7 +12,7 @@ using System.Windows.Forms;
 
 namespace CodexBarWin.UI;
 
-public sealed class CodexBarDashboardForm : Form
+public sealed class CodexBarDashboardForm : AdaptiveForm
 {
     private enum DashboardView
     {
@@ -29,6 +29,7 @@ public sealed class CodexBarDashboardForm : Form
     private readonly Action _importRequested;
     private readonly Action _exportRequested;
     private readonly Action _openSettingsRequested;
+    private readonly Action<TokenAccount>? _deleteAccountRequested;
     private readonly Func<bool> _isKeepAwakeEnabled;
     private readonly Action<bool> _setKeepAwakeEnabled;
     private readonly ToolTip _toolTip = new() { InitialDelay = 320, ReshowDelay = 120, AutoPopDelay = 4000 };
@@ -67,8 +68,10 @@ public sealed class CodexBarDashboardForm : Form
         Action exportRequested,
         Action openSettingsRequested,
         Func<bool> isKeepAwakeEnabled,
-        Action<bool> setKeepAwakeEnabled)
+        Action<bool> setKeepAwakeEnabled,
+        Action<TokenAccount>? deleteAccountRequested = null)
     {
+        _deleteAccountRequested = deleteAccountRequested;
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _refreshCoordinator = refreshCoordinator ?? throw new ArgumentNullException(nameof(refreshCoordinator));
@@ -82,9 +85,9 @@ public sealed class CodexBarDashboardForm : Form
 
         Text = "WinCodexBar 工作台";
         Font = FluentTheme.TextFontPx(14);
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1120, 860);
+        MinimumSize = new Size(640, 420);
         Size = new Size(1280, 960);
         BackColor = FluentTheme.LayerBackground;
         AppIconProvider.Apply(this);
@@ -156,12 +159,12 @@ public sealed class CodexBarDashboardForm : Form
             ColumnCount = 1,
             RowCount = 5,
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 164));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        Controls.Add(root);
+        InstallScrollableContent(root, new Size(880, 620));
 
         root.Controls.Add(BuildHeader(), 0, 0);
         root.Controls.Add(BuildToolbar(), 0, 1);
@@ -237,18 +240,15 @@ public sealed class CodexBarDashboardForm : Form
         };
         titlePanel.Controls.Add(provider, 1, 0);
 
-        var metrics = new FlowLayoutPanel
+        var metrics = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill, BackColor = Color.Transparent, ColumnCount = 4, RowCount = 1,
             Padding = new Padding(0, 8, 0, 0),
         };
-        metrics.Controls.Add(MetricCard("账号", _countLabel, 140));
-        metrics.Controls.Add(MetricCard("当前账号", _activeLabel, 300));
-        metrics.Controls.Add(MetricCard("用量", _usageLabel, 270));
-        metrics.Controls.Add(MetricCard("健康", _healthLabel, 220));
+        foreach (var weight in new[] { 14f, 32f, 30f, 24f }) metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, weight));
+        var cards = new[] { MetricCard("账号", _countLabel, 140), MetricCard("当前账号", _activeLabel, 280),
+            MetricCard("用量", _usageLabel, 270), MetricCard("健康", _healthLabel, 220) };
+        for (var i = 0; i < cards.Length; i++) { cards[i].Dock = DockStyle.Fill; metrics.Controls.Add(cards[i], i, 0); }
         header.Controls.Add(metrics, 0, 1);
 
         return header;
@@ -307,7 +307,7 @@ public sealed class CodexBarDashboardForm : Form
             Padding = new Padding(0, 9, 0, 7),
         };
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
 
         var commands = new FlowLayoutPanel
         {
@@ -616,7 +616,7 @@ public sealed class CodexBarDashboardForm : Form
             Padding = new Padding(0, 12, 0, 0),
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 164));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
 
         var note = new Label
@@ -687,6 +687,7 @@ public sealed class CodexBarDashboardForm : Form
         var accounts = OrderedAccounts(_registry.Accounts.ToArray()).ToArray();
 
         _accountList.SuspendLayout();
+        foreach (Control old in _accountList.Controls.Cast<Control>().ToArray()) old.Dispose();
         _accountList.Controls.Clear();
         if (accounts.Length == 0)
         {
@@ -696,7 +697,9 @@ public sealed class CodexBarDashboardForm : Form
         {
             foreach (var account in accounts)
             {
-                _accountList.Controls.Add(BuildAccountRow(account, config));
+                var row = BuildAccountRow(account, config);
+                if (IsHandleCreated) { var scale = AppAppearance.ScaleFor(this); AppAppearance.ScaleTree(row, scale); }
+                _accountList.Controls.Add(row);
             }
         }
         _accountList.ResumeLayout();
@@ -779,7 +782,7 @@ public sealed class CodexBarDashboardForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 216));
         row.Controls.Add(layout);
 
         var marker = new Label
@@ -800,6 +803,7 @@ public sealed class CodexBarDashboardForm : Form
             RowCount = 3,
             ColumnCount = 1,
         };
+        accountInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
@@ -867,12 +871,13 @@ public sealed class CodexBarDashboardForm : Form
             ColumnCount = 1,
             Padding = new Padding(0, 2, 0, 0),
         };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
         panel.Controls.Add(new Label
         {
-            Text = $"5h {AccountUsageHelpers.FormatDisplayPercent(account.PrimaryUsedPercent, config.OpenAI.UsageDisplayMode)}   ·   7d {AccountUsageHelpers.FormatDisplayPercent(account.SecondaryUsedPercent, config.OpenAI.UsageDisplayMode)}",
+            Text = AccountUsageHelpers.UsageText(account, config.OpenAI.UsageDisplayMode),
             Dock = DockStyle.Fill,
             Font = FluentTheme.TextFontPx(16, FontStyle.Bold),
             ForeColor = FluentTheme.TextPrimary,
@@ -882,7 +887,7 @@ public sealed class CodexBarDashboardForm : Form
         }, 0, 0);
         panel.Controls.Add(new Label
         {
-            Text = $"重置 5h {AccountUsageHelpers.FormatResetCountdown(account.PrimaryResetAt)} · 7d {AccountUsageHelpers.FormatResetCountdown(account.SecondaryResetAt)}",
+            Text = "重置 " + AccountUsageHelpers.ResetText(account),
             Dock = DockStyle.Fill,
             Font = FluentTheme.TextFontPx(13),
             ForeColor = FluentTheme.TextSecondary,
@@ -890,16 +895,16 @@ public sealed class CodexBarDashboardForm : Form
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
         }, 0, 1);
-        panel.Controls.Add(new Label
+        var details = new LinkLabel
         {
-            Text = "刷新 " + AccountUsageHelpers.FormatLastChecked(account.LastChecked),
-            Dock = DockStyle.Fill,
-            Font = FluentTheme.TextFontPx(13),
-            ForeColor = FluentTheme.TextTertiary,
-            BackColor = Color.Transparent,
-            AutoEllipsis = true,
-            TextAlign = ContentAlignment.MiddleLeft,
-        }, 0, 2);
+            Text = AccountUsageHelpers.CreditSummary(account) + " · 详情",
+            Dock = DockStyle.Fill, Font = FluentTheme.TextFontPx(13),
+            LinkColor = FluentTheme.Accent, BackColor = Color.Transparent, LinkBehavior = LinkBehavior.HoverUnderline,
+            AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand, TabStop = true,
+        };
+        _toolTip.SetToolTip(details, AccountUsageHelpers.DetailsText(account, config.OpenAI.UsageDisplayMode));
+        details.LinkClicked += (_, _) => { using var form = new AccountDetailsForm(account, config.OpenAI.UsageDisplayMode); form.ShowDialog(this); };
+        panel.Controls.Add(details, 0, 2);
         return panel;
     }
 
@@ -913,6 +918,14 @@ public sealed class CodexBarDashboardForm : Form
             BackColor = Color.Transparent,
             Padding = new Padding(0, 26, 0, 0),
         };
+        if (_deleteAccountRequested is not null)
+        {
+            var delete = new FluentButton();
+            ConfigureButton(delete, "删除", false, 54);
+            delete.ForeColor = FluentTheme.Critical;
+            delete.Click += (_, _) => _deleteAccountRequested(account);
+            panel.Controls.Add(delete);
+        }
         var refresh = new FluentButton();
         ConfigureButton(refresh, "刷新", false, 54);
         _toolTip.SetToolTip(refresh, "刷新此账号");
@@ -988,8 +1001,7 @@ public sealed class CodexBarDashboardForm : Form
         }
         finally
         {
-            trigger.Text = oldText;
-            trigger.Enabled = true;
+            if (!trigger.IsDisposed) { trigger.Text = oldText; trigger.Enabled = true; }
         }
     }
 
@@ -1028,9 +1040,7 @@ public sealed class CodexBarDashboardForm : Form
             return "暂无账号";
         }
 
-        var primary = accounts.Select(a => AccountUsageHelpers.Clamp(a.PrimaryUsedPercent)).DefaultIfEmpty(0).Average();
-        var secondary = accounts.Select(a => AccountUsageHelpers.Clamp(a.SecondaryUsedPercent)).DefaultIfEmpty(0).Average();
-        return $"5h {AccountUsageHelpers.DisplayPercent(primary, config.OpenAI.UsageDisplayMode):F1}% · 7d {AccountUsageHelpers.DisplayPercent(secondary, config.OpenAI.UsageDisplayMode):F1}%";
+        return AccountUsageHelpers.AverageText(accounts, config.OpenAI.UsageDisplayMode);
     }
 
     private static string LatestRefreshNote(IReadOnlyCollection<TokenAccount> accounts)

@@ -6,8 +6,80 @@ namespace CodexBarWin.Models;
 /// <summary>
 /// 账号用量相关的纯逻辑计算，集中在这里方便测试和被多个 UI 复用。
 /// </summary>
+public sealed record AccountUsageWindow(string Label, double UsedPercent, DateTimeOffset? ResetAt);
+
 public static class AccountUsageHelpers
 {
+    public static IReadOnlyList<AccountUsageWindow> Windows(TokenAccount account)
+    {
+        var windows = new List<AccountUsageWindow>();
+        void Add(bool? available, double used, DateTimeOffset? reset, int? seconds, string fallback)
+        {
+            // 旧数据没有 available 字段时，只接受明确存在的窗口信息；未知不等于 0%。
+            if (!(available ?? (reset.HasValue || seconds.HasValue || used > 0)) || !HasUsageValue(used)) return;
+            var label = seconds == 604800 ? "7d" : seconds == 18000 ? "5h" : fallback;
+            windows.RemoveAll(w => w.Label == label);
+            windows.Add(new(label, Clamp(used), reset));
+        }
+        Add(account.PrimaryWindowAvailable, account.PrimaryUsedPercent, account.PrimaryResetAt, account.PrimaryLimitWindowSeconds, "5h");
+        Add(account.SecondaryWindowAvailable, account.SecondaryUsedPercent, account.SecondaryResetAt, account.SecondaryLimitWindowSeconds, "7d");
+        return windows.OrderBy(w => w.Label == "5h" ? 0 : 1).ToArray();
+    }
+
+    public static string UsageText(TokenAccount account, UsageDisplayMode mode) => Windows(account).Count == 0
+        ? "用量未提供" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {FormatDisplayPercent(w.UsedPercent, mode)}"));
+
+    public static string ResetText(TokenAccount account) => Windows(account).Count == 0
+        ? "等待额度数据" : string.Join(" · ", Windows(account).Select(w => $"{w.Label} {ExactTime(w.ResetAt)}"));
+
+    public static string AverageText(IEnumerable<TokenAccount> accounts, UsageDisplayMode mode)
+    {
+        var groups = accounts.SelectMany(Windows).GroupBy(w => w.Label).OrderBy(g => g.Key == "5h" ? 0 : 1);
+        var text = string.Join(" · ", groups.Select(g => $"{g.Key} {FormatDisplayPercent(g.Average(w => w.UsedPercent), mode)}"));
+        return text.Length == 0 ? "用量未提供" : text;
+    }
+
+    public static string ExactTime(DateTimeOffset? value) => value?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture) ?? "未提供";
+
+    public static string CreditSummary(TokenAccount account)
+    {
+        var count = account.ResetCreditsAvailable is { } n ? $"{n} 次" : "次数未提供";
+        var cached = account.ResetCreditDetailsStale || account.ResetCreditsCheckedAt is { } at && DateTimeOffset.UtcNow - at > TimeSpan.FromMinutes(10);
+        return "重置卡 " + count + (cached ? "（缓存）" : "");
+    }
+
+    public static string DetailsText(TokenAccount account, UsageDisplayMode mode)
+    {
+        var lines = new List<string> { DisplayName(account), "", "额度窗口" };
+        foreach (var window in Windows(account))
+        {
+            lines.Add($"{(window.Label == "5h" ? "5 小时" : "7 天")}：{FormatDisplayPercent(window.UsedPercent, mode)}（{(mode == UsageDisplayMode.Remaining ? "剩余" : "已用")}）");
+            lines.Add("重置时间：" + ExactTime(window.ResetAt));
+            lines.Add("");
+        }
+        if (Windows(account).Count == 0) lines.Add("额度数据未提供");
+        lines.Add(CreditSummary(account));
+        if (account.ResetCreditsAvailable != 0)
+        {
+            if (account.ResetCreditDetails is null) lines.Add("到期时间：未提供");
+            else
+            {
+                for (var i = 0; i < account.ResetCreditDetails.Count; i++)
+                {
+                    var credit = account.ResetCreditDetails[i];
+                    var expiry = !credit.ExpirationKnown ? "未提供" : credit.ExpiresAt is null ? "无到期限制" : ExactTime(credit.ExpiresAt);
+                    lines.Add($"第 {i + 1} 张到期：{expiry}");
+                }
+                if (account.ResetCreditDetails.Count < account.ResetCreditsAvailable)
+                    lines.Add("其余重置卡的到期时间未提供。");
+            }
+        }
+        lines.Add("");
+        lines.Add("时间按本机时区显示，末尾为 UTC 偏移。");
+        lines.Add("重置卡资料更新时间：" + ExactTime(account.ResetCreditsCheckedAt));
+        return string.Join(Environment.NewLine, lines);
+    }
+
     public static double Clamp(double value)
     {
         return double.IsFinite(value) ? Math.Clamp(value, 0, 100) : 0;
@@ -20,7 +92,7 @@ public static class AccountUsageHelpers
 
     public static double MaxUsage(TokenAccount account)
     {
-        return Math.Max(Clamp(account.PrimaryUsedPercent), Clamp(account.SecondaryUsedPercent));
+        return Windows(account).Select(w => w.UsedPercent).DefaultIfEmpty(0).Max();
     }
 
     public static AccountHealthStatus Health(
@@ -54,7 +126,7 @@ public static class AccountUsageHelpers
             return AccountHealthStatus.Warning;
         }
 
-        if (account.LastChecked is null)
+        if (account.LastChecked is null || Windows(account).Count == 0)
         {
             return AccountHealthStatus.Unknown;
         }

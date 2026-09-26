@@ -4,7 +4,7 @@ using System.Windows.Forms;
 
 namespace CodexBarWin.UI;
 
-public sealed class ConfirmActionDialog : Form
+public sealed class ConfirmActionDialog : AdaptiveForm
 {
     public ConfirmActionDialog(string title, string message, string confirmText = "确认")
     {
@@ -12,7 +12,7 @@ public sealed class ConfirmActionDialog : Form
         Font = FluentTheme.TextFontPx(13);
         BackColor = FluentTheme.LayerBackground;
         Width = 420;
-        Height = 210;
+        Height = 300;
         MinimumSize = new Size(380, 190);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -28,10 +28,11 @@ public sealed class ConfirmActionDialog : Form
             RowCount = 3,
             ColumnCount = 1,
         };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        Controls.Add(root);
+        InstallScrollableContent(root, new Size(400, 240));
 
         root.Controls.Add(new Label
         {

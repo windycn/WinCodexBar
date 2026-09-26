@@ -17,6 +17,10 @@ public sealed record CodexRadarPrediction(
     DateTimeOffset? UpdatedAt,
     bool IsAvailable)
 {
+    public bool? WindowOpen { get; init; }
+    public DateTimeOffset? WindowOpenedAt { get; init; }
+    public bool IsStale { get; init; }
+
     public static CodexRadarPrediction Loading { get; } = new("loading", "获取中", string.Empty, null, null, null, false);
 
     public static CodexRadarPrediction Unavailable { get; } = new("unknown", "暂不可用", string.Empty, null, null, null, false);
@@ -27,10 +31,18 @@ public sealed record CodexRadarPrediction(
         {
             if (!IsAvailable)
             {
-                return string.Empty;
+                return Level == "loading" ? "重置窗口 · 获取中 · Codex 雷达" : "重置窗口 · 暂不可用 · Codex 雷达";
             }
 
-            var parts = new List<string> { "预测当前重置概率", LevelLabel };
+            if (WindowOpen.HasValue)
+            {
+                var state = WindowOpen.Value ? "速蹬窗口开启" : "重置窗口未开启";
+                var time = WindowOpen.Value && WindowOpenedAt.HasValue ? $" · {WindowOpenedAt.Value.ToOffset(TimeSpan.FromHours(8)):M月d日 HH:mm} 北京时间" : "";
+                return $"{(IsStale ? "缓存 · " : "")}{state}{time} · Codex 雷达";
+            }
+            if (UpdatedAt is null || DateTimeOffset.UtcNow - UpdatedAt > TimeSpan.FromDays(3))
+                return "旧预测已过期 · 查看 Codex 雷达";
+            var parts = new List<string> { IsStale ? "缓存预测" : "社区重置预测", LevelLabel };
             var probability = ProbabilityDisplayText();
             if (!string.IsNullOrWhiteSpace(probability))
             {
@@ -116,23 +128,33 @@ public sealed class CodexRadarService
 
             return prediction;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             AppLogService.LogException(ex, "codex radar current.json");
             lock (_gate)
             {
                 _lastFetchedAt = DateTimeOffset.UtcNow;
+                _lastPrediction = _lastPrediction.IsAvailable ? _lastPrediction with { IsStale = true } : CodexRadarPrediction.Unavailable;
                 return _lastPrediction;
             }
         }
     }
 
-    private static CodexRadarPrediction Parse(JsonElement root)
+    public static CodexRadarPrediction Parse(JsonElement root)
     {
-        if (!root.TryGetProperty("prediction", out var prediction) || prediction.ValueKind != JsonValueKind.Object)
+        if (root.ValueKind != JsonValueKind.Object) return CodexRadarPrediction.Unavailable;
+        bool? windowOpen = null;
+        DateTimeOffset? openedAt = null;
+        if (root.TryGetProperty("window_open", out var flag) && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            windowOpen = flag.GetBoolean();
+        if (root.TryGetProperty("window", out var window) && window.ValueKind == JsonValueKind.Object)
         {
-            return CodexRadarPrediction.Unavailable;
+            if (!windowOpen.HasValue && window.TryGetProperty("open", out flag) && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                windowOpen = flag.GetBoolean();
+            if (DateTimeOffset.TryParse(ReadString(window, "opened_at"), out var time)) openedAt = time;
         }
+        if (!root.TryGetProperty("prediction", out var prediction) || prediction.ValueKind != JsonValueKind.Object)
+            return windowOpen.HasValue ? CodexRadarPrediction.Unavailable with { IsAvailable = true, WindowOpen = windowOpen, WindowOpenedAt = openedAt } : CodexRadarPrediction.Unavailable;
 
         var level = ReadString(prediction, "level") ?? "unknown";
         var expectedWindow = NormalizeWhitespace(ReadString(prediction, "expected_window")
@@ -142,7 +164,7 @@ public sealed class CodexRadarService
         var probability48h = ReadDouble(prediction, "probability_48h");
         var updatedAtText = ReadString(prediction, "updated_at") ?? ReadString(root, "monitored_at");
         DateTimeOffset? updatedAt = DateTimeOffset.TryParse(updatedAtText, out var parsed) ? parsed : null;
-        return new CodexRadarPrediction(level, LevelLabel(level), expectedWindow, probability24h, probability48h, updatedAt, true);
+        return new CodexRadarPrediction(level, LevelLabel(level), expectedWindow, probability24h, probability48h, updatedAt, true) { WindowOpen = windowOpen, WindowOpenedAt = openedAt };
     }
 
     private static string LevelLabel(string level)

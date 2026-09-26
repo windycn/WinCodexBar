@@ -101,6 +101,10 @@ public sealed class TokenPricePreset
     {
         return new Dictionary<string, TokenPricePreset>(StringComparer.OrdinalIgnoreCase)
         {
+            // 官方标准短上下文价，2026-09-26；估值不包含长上下文/加速等倍率。
+            ["gpt-6-astra"] = new() { InputUsdPerMillion = 10, CachedInputUsdPerMillion = 1, OutputUsdPerMillion = 50 },
+            ["gpt-6-sol"] = new() { InputUsdPerMillion = 2, CachedInputUsdPerMillion = 0.2, OutputUsdPerMillion = 10 },
+            ["gpt-6-luna"] = new() { InputUsdPerMillion = 0.1, CachedInputUsdPerMillion = 0.01, OutputUsdPerMillion = 0.5 },
             ["gpt-5.5"] = new() { InputUsdPerMillion = 5, CachedInputUsdPerMillion = 0.5, OutputUsdPerMillion = 30 },
             ["gpt-5.4"] = new() { InputUsdPerMillion = 2.5, CachedInputUsdPerMillion = 0.25, OutputUsdPerMillion = 15 },
             ["gpt-5.4-mini"] = new() { InputUsdPerMillion = 0.75, CachedInputUsdPerMillion = 0.075, OutputUsdPerMillion = 4.5 },
@@ -215,10 +219,10 @@ public sealed class CodexBarOpenAISettings
 public sealed class CodexBarGlobalSettings
 {
     [JsonPropertyName("default_model")]
-    public string DefaultModel { get; set; } = "gpt-5.5";
+    public string DefaultModel { get; set; } = "gpt-6-sol";
 
     [JsonPropertyName("review_model")]
-    public string ReviewModel { get; set; } = "gpt-5.5";
+    public string ReviewModel { get; set; } = "gpt-6-sol";
 
     [JsonPropertyName("reasoning_effort")]
     public string ReasoningEffort { get; set; } = "medium";
@@ -234,6 +238,15 @@ public sealed class CodexBarConfig
 
     [JsonPropertyName("openai")]
     public CodexBarOpenAISettings OpenAI { get; set; } = new();
+
+    [JsonPropertyName("ui_scale_percent")]
+    public int UiScalePercent { get; set; }
+
+    [JsonPropertyName("tray_icon_style")]
+    public string TrayIconStyle { get; set; } = "ring";
+
+    [JsonPropertyName("auto_check_updates")]
+    public bool AutoCheckUpdates { get; set; } = true;
 
     [JsonPropertyName("keep_awake_enabled")]
     public bool KeepAwakeEnabled { get; set; } = true;
@@ -263,6 +276,9 @@ public sealed class CodexBarConfig
     {
         return new CodexBarConfig
         {
+            UiScalePercent = UiScalePercent,
+            TrayIconStyle = TrayIconStyle,
+            AutoCheckUpdates = AutoCheckUpdates,
             KeepAwakeEnabled = KeepAwakeEnabled,
             AdvancedKeepAwakeEnabled = AdvancedKeepAwakeEnabled,
             AdvancedKeepAwakeIdleThresholdMs = AdvancedKeepAwakeIdleThresholdMs,
@@ -296,6 +312,9 @@ public sealed class CodexBarConfig
 
     public static readonly string[] AvailableModels =
     {
+        "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.5",
         "gpt-5.4",
         "gpt-5.4-mini",
@@ -310,6 +329,7 @@ public sealed class CodexBarConfig
         "medium",
         "high",
         "xhigh",
+        "max",
     };
 
     public static readonly string[] AvailableServiceTiers =
