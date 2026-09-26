@@ -27,6 +27,8 @@ public sealed class SettingsForm : AdaptiveForm
     private TableLayoutPanel? _root;
     private Panel? _navCard;
     private TableLayoutPanel? _footer;
+    private TableLayoutPanel? _main;
+    private TableLayoutPanel? _header;
     private readonly ComboBox _compactNavigation = new FluentComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly FlowLayoutPanel _sidebar = new();
     private readonly Panel _scrollHost = new();
@@ -135,7 +137,7 @@ public sealed class SettingsForm : AdaptiveForm
         _sidebar.Controls.Add(MakeNavButton(Page.Models, FluentIcons.Settings, "模型参数"));
         _sidebar.Controls.Add(MakeNavButton(Page.Appearance, FluentIcons.Home, "外观与缩放"));
 
-        var main = new TableLayoutPanel
+        var main = _main = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
@@ -147,7 +149,7 @@ public sealed class SettingsForm : AdaptiveForm
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         root.Controls.Add(main, 1, 1);
 
-        var header = new TableLayoutPanel
+        var header = _header = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
@@ -941,6 +943,13 @@ public sealed class SettingsForm : AdaptiveForm
         return card;
     }
 
+    public override void ApplyAppearance()
+    {
+        base.ApplyAppearance();
+        // Scale 会在布局事件之后继续调整列宽，必须在整棵控件树缩放结束后再定稿。
+        LayoutResponsiveNavigation();
+    }
+
     private void LayoutResponsiveNavigation()
     {
         if (_root is null || _navCard is null) return;
@@ -953,7 +962,7 @@ public sealed class SettingsForm : AdaptiveForm
         _compactNavigation.Visible = compact;
         if (_footer is not null)
         {
-            var narrow = ClientSize.Width / scale < 460;
+            var narrow = ClientSize.Width / scale < 600;
             _saveStatusLabel.Visible = !narrow;
             _footer.ColumnStyles[0].SizeType = narrow ? SizeType.Absolute : SizeType.Percent;
             _footer.ColumnStyles[0].Width = narrow ? 0 : 100;
@@ -962,6 +971,20 @@ public sealed class SettingsForm : AdaptiveForm
                 _footer.ColumnStyles[i].SizeType = narrow ? SizeType.Percent : SizeType.Absolute;
                 _footer.ColumnStyles[i].Width = narrow ? 33.33f : (i==3 ? 118 : 92) * scale;
             }
+        }
+        if (_main is not null && _header is not null)
+        {
+            var titlePixels = (compact ? 22 : 28) * scale;
+            if (Math.Abs(_title.Font.Size - titlePixels) > .1f)
+            {
+                var previous = _title.Font;
+                _title.Font = FluentTheme.TextFontPx(titlePixels, FontStyle.Bold);
+                previous.Dispose();
+            }
+            _header.RowStyles[0].Height = (compact ? 36 : 48) * scale;
+            _header.RowStyles[1].Height = (compact ? 44 : 56) * scale;
+            _main.RowStyles[0].Height = (compact ? 84 : 108) * scale;
+            _main.RowStyles[2].Height = 58 * scale;
         }
         _root.ResumeLayout(true);
         ResizeCards();

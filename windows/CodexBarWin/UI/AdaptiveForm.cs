@@ -54,7 +54,7 @@ public class AdaptiveForm : Form
         ApplyAppearance();
     }
 
-    public void ApplyAppearance()
+    public virtual void ApplyAppearance()
     {
         var factor = AppAppearance.ScaleFor(this) / (DeviceDpi / 96f);
         var relative = factor / _manualFactor;
