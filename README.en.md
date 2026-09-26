@@ -28,4 +28,4 @@ Window tests require Windows and use isolated temporary data. Mixed-monitor hot-
 
 [MIT License](./LICENSE) · [Third-party notices](./THIRD_PARTY_NOTICES.md)
 
-Account quota windows are shown only when supplied by the service. Weekly-only accounts have no five-hour placeholder, and the tray indicator uses weekly usage. Reset-credit counts and individual expiration times are read-only; account details show exact reset dates, seconds, local UTC offsets, and countdowns. There is no redemption action or endpoint.
+Account quota windows are shown only when supplied by the service. Weekly-only accounts have no five-hour placeholder, and the tray indicator uses weekly usage. Reset-credit counts and individual expiration times are read-only; account details show exact reset dates, seconds, and local UTC offsets. There is no redemption action or endpoint.
