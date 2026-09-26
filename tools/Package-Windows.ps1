@@ -1,4 +1,4 @@
-param([string]$Version = '0.2.0', [string]$PublishRoot = 'artifacts', [string]$OutputRoot = 'artifacts/packages')
+param([string]$Version = '0.2.1', [string]$PublishRoot = 'artifacts', [string]$OutputRoot = 'artifacts/packages')
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 $checksums = @()

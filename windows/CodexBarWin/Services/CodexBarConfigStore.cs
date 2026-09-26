@@ -42,12 +42,17 @@ public sealed class CodexBarConfigStore
             var config = new CodexBarConfig();
             config.KeepAwakeEnabled = ReadBool(root, "keep_awake_enabled",
                 ReadBool(root, "KeepAwakeEnabled", config.KeepAwakeEnabled));
+            var awayModeDelay = ReadInt(root, "away_mode_delay_seconds", config.AwayModeDelaySeconds);
+            config.AwayModeDelaySeconds = awayModeDelay is 5 or 15 or 30 ? awayModeDelay : 5;
             config.AdvancedKeepAwakeEnabled = ReadBool(root, "advanced_keep_awake_enabled", config.AdvancedKeepAwakeEnabled);
             config.AutoCheckUpdates = ReadBool(root, "auto_check_updates", true);
             var uiScale = ReadInt(root, "ui_scale_percent", 0);
             config.UiScalePercent = uiScale is 100 or 125 or 150 or 175 or 200 or 250 or 300 ? uiScale : 0;
             if (root.TryGetProperty("tray_icon_style", out var trayStyle) && trayStyle.ValueKind == JsonValueKind.String)
-                config.TrayIconStyle = trayStyle.GetString() is "percent" or "classic" ? trayStyle.GetString()! : "ring";
+            {
+                var style = trayStyle.GetString();
+                config.TrayIconStyle = style is "ring" or "dual" or "percent" or "status" or "bars" or "classic" ? style : "ring";
+            }
 
             config.AdvancedKeepAwakeIdleThresholdMs = ReadInt(root, "advanced_keep_awake_idle_threshold_ms", config.AdvancedKeepAwakeIdleThresholdMs);
             config.AdvancedKeepAwakeIntervalMs = ReadInt(root, "advanced_keep_awake_interval_ms", config.AdvancedKeepAwakeIntervalMs);

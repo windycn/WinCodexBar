@@ -14,6 +14,22 @@ namespace CodexBarWin.UI;
 
 public sealed class CodexBarDashboardForm : AdaptiveForm
 {
+    private sealed class AccountRowView
+    {
+        public required RoundedPanel Root { get; init; }
+        public required Label Marker { get; init; }
+        public required Label Name { get; init; }
+        public required Label Health { get; init; }
+        public required Label Meta { get; init; }
+        public required Label Plan { get; init; }
+        public required Label Usage { get; init; }
+        public required Label Reset { get; init; }
+        public required LinkLabel Credits { get; init; }
+        public Button? Delete { get; init; }
+        public required Button Refresh { get; init; }
+        public required Button Activate { get; init; }
+    }
+
     private enum DashboardView
     {
         Accounts,
@@ -40,7 +56,8 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
     private readonly Label _healthLabel = new();
     private readonly Label _statusLabel = new();
     private readonly SmoothFlowLayoutPanel _accountList = new();
-    private readonly Panel _viewHost = new();
+    private readonly Dictionary<string, AccountRowView> _accountRows = new(StringComparer.Ordinal);
+    private readonly BufferedPanel _viewHost = new();
     private readonly Button _accountsTab = new FluentButton();
     private readonly Button _activityTab = new FluentButton();
     private readonly Button _sessionsTab = new FluentButton();
@@ -57,6 +74,9 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
     private bool _isRefreshing;
     private bool _activityScanRunning;
     private bool _sessionScanRunning;
+    private RoundedPanel? _emptyAccounts;
+    private Bitmap? _backgroundCache;
+    private Size _backgroundCacheSize;
 
     public CodexBarDashboardForm(
         AccountRegistry registry,
@@ -96,12 +116,6 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         Shown += (_, _) => RefreshData();
     }
 
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        MicaSupport.TryApply(this);
-    }
-
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         if (ClientRectangle.Width <= 0 || ClientRectangle.Height <= 0)
@@ -110,12 +124,20 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             return;
         }
 
-        using var brush = new LinearGradientBrush(
-            ClientRectangle,
-            Color.FromArgb(250, 251, 253),
-            Color.FromArgb(235, 243, 247),
-            LinearGradientMode.ForwardDiagonal);
-        e.Graphics.FillRectangle(brush, ClientRectangle);
+        if (_backgroundCache is null || _backgroundCacheSize != ClientSize)
+        {
+            _backgroundCache?.Dispose();
+            _backgroundCache = new Bitmap(ClientSize.Width, ClientSize.Height);
+            _backgroundCacheSize = ClientSize;
+            using var graphics = Graphics.FromImage(_backgroundCache);
+            using var brush = new LinearGradientBrush(
+                new Rectangle(Point.Empty, ClientSize),
+                Color.FromArgb(250, 251, 253),
+                Color.FromArgb(235, 243, 247),
+                LinearGradientMode.ForwardDiagonal);
+            graphics.FillRectangle(brush, 0, 0, ClientSize.Width, ClientSize.Height);
+        }
+        e.Graphics.DrawImageUnscaled(_backgroundCache, ClientRectangle.Location);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -137,6 +159,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         {
             _toolTip.Dispose();
             _refreshCts?.Dispose();
+            _backgroundCache?.Dispose();
         }
 
         base.Dispose(disposing);
@@ -151,7 +174,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
 
     private void BuildLayout()
     {
-        var root = new TableLayoutPanel
+        var root = new BufferedTableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
@@ -585,7 +608,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
 
     private Control BuildAccountList()
     {
-        var surface = new Panel
+        var surface = new BufferedPanel
         {
             Dock = DockStyle.Fill,
             BackColor = FluentTheme.CardBackground,
@@ -671,14 +694,14 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         var config = _configStore.Config;
         var active = accounts.FirstOrDefault(a => string.Equals(a.AccountId, _registry.ActiveAccountId, StringComparison.Ordinal));
 
-        _countLabel.Text = accounts.Length.ToString(CultureInfo.InvariantCulture);
-        _activeLabel.Text = active is null ? "未激活" : TrimMiddle(AccountUsageHelpers.DisplayName(active), 30);
-        _usageLabel.Text = BuildUsageSummary(accounts, config);
+        SetTextIfChanged(_countLabel, accounts.Length.ToString(CultureInfo.InvariantCulture));
+        SetTextIfChanged(_activeLabel, active is null ? "未激活" : TrimMiddle(AccountUsageHelpers.DisplayName(active), 30));
+        SetTextIfChanged(_usageLabel, BuildUsageSummary(accounts, config));
         var warning = accounts.Count(a => AccountUsageHelpers.Health(a, config.OpenAI.WarningThresholdPercent, config.OpenAI.DangerThresholdPercent) == AccountHealthStatus.Warning);
         var danger = accounts.Count(a => AccountUsageHelpers.Health(a, config.OpenAI.WarningThresholdPercent, config.OpenAI.DangerThresholdPercent) == AccountHealthStatus.Exhausted);
-        _healthLabel.Text = $"警戒 {warning} · 高负载 {danger}";
-        _keepAwakeButton.Text = _isKeepAwakeEnabled() ? "关闭保持唤醒" : "开启保持唤醒";
-        _statusLabel.Text = LatestRefreshNote(accounts);
+        SetTextIfChanged(_healthLabel, $"警戒 {warning} · 高负载 {danger}");
+        SetTextIfChanged(_keepAwakeButton, _isKeepAwakeEnabled() ? "关闭保持唤醒" : "开启保持唤醒");
+        SetTextIfChanged(_statusLabel, LatestRefreshNote(accounts));
     }
 
     private void RefreshAccountListOnly()
@@ -687,22 +710,58 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         var accounts = OrderedAccounts(_registry.Accounts.ToArray()).ToArray();
 
         _accountList.SuspendLayout();
-        foreach (Control old in _accountList.Controls.Cast<Control>().ToArray()) old.Dispose();
-        _accountList.Controls.Clear();
-        if (accounts.Length == 0)
+        try
         {
-            _accountList.Controls.Add(BuildEmptyState());
-        }
-        else
-        {
-            foreach (var account in accounts)
+            var accountIds = accounts.Select(account => account.AccountId).ToHashSet(StringComparer.Ordinal);
+            foreach (var staleId in _accountRows.Keys.Where(id => !accountIds.Contains(id)).ToArray())
             {
-                var row = BuildAccountRow(account, config);
-                if (IsHandleCreated) { var scale = AppAppearance.ScaleFor(this); AppAppearance.ScaleTree(row, scale); }
-                _accountList.Controls.Add(row);
+                var stale = _accountRows[staleId];
+                _accountRows.Remove(staleId);
+                _accountList.Controls.Remove(stale.Root);
+                stale.Root.Dispose();
+            }
+
+            if (accounts.Length == 0)
+            {
+                if (_emptyAccounts is null || _emptyAccounts.IsDisposed)
+                {
+                    _emptyAccounts = (RoundedPanel)BuildEmptyState();
+                    if (IsHandleCreated) AppAppearance.ScaleTree(_emptyAccounts, AppAppearance.ScaleFor(this));
+                }
+                if (!_accountList.Controls.Contains(_emptyAccounts)) _accountList.Controls.Add(_emptyAccounts);
+            }
+            else
+            {
+                if (_emptyAccounts is not null)
+                {
+                    _accountList.Controls.Remove(_emptyAccounts);
+                    _emptyAccounts.Dispose();
+                    _emptyAccounts = null;
+                }
+
+                for (var index = 0; index < accounts.Length; index++)
+                {
+                    var account = accounts[index];
+                    if (!_accountRows.TryGetValue(account.AccountId, out var row))
+                    {
+                        row = BuildAccountRow(account, config);
+                        if (IsHandleCreated) AppAppearance.ScaleTree(row.Root, AppAppearance.ScaleFor(this));
+                        _accountRows.Add(account.AccountId, row);
+                        _accountList.Controls.Add(row.Root);
+                    }
+
+                    UpdateAccountRow(row, account, config);
+                    if (_accountList.Controls.GetChildIndex(row.Root) != index)
+                    {
+                        _accountList.Controls.SetChildIndex(row.Root, index);
+                    }
+                }
             }
         }
-        _accountList.ResumeLayout();
+        finally
+        {
+            _accountList.ResumeLayout(false);
+        }
         ResizeAccountRows();
     }
 
@@ -748,7 +807,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         return panel;
     }
 
-    private Control BuildAccountRow(TokenAccount account, CodexBarConfig config)
+    private AccountRowView BuildAccountRow(TokenAccount account, CodexBarConfig config)
     {
         var isActive = string.Equals(account.AccountId, _registry.ActiveAccountId, StringComparison.Ordinal);
         var status = AccountUsageHelpers.Health(account, config.OpenAI.WarningThresholdPercent, config.OpenAI.DangerThresholdPercent);
@@ -764,9 +823,18 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             CornerRadius = 6,
             Cursor = Cursors.Hand,
         };
+        var marker = new Label
+        {
+            Text = "●",
+            Dock = DockStyle.Fill,
+            Font = FluentTheme.TextFontPx(18),
+            ForeColor = accent,
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.MiddleCenter,
+        };
         row.DoubleClick += (_, _) =>
         {
-            _activateAccount(account);
+            if (FindCurrentAccount(account.AccountId) is { } current) _activateAccount(current);
             RefreshData();
         };
         _toolTip.SetToolTip(row, isActive ? "当前账号" : "切换到此账号");
@@ -785,15 +853,6 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 216));
         row.Controls.Add(layout);
 
-        var marker = new Label
-        {
-            Text = "●",
-            Dock = DockStyle.Fill,
-            Font = FluentTheme.TextFontPx(18),
-            ForeColor = accent,
-            BackColor = Color.Transparent,
-            TextAlign = ContentAlignment.MiddleCenter,
-        };
         layout.Controls.Add(marker, 0, 0);
 
         var accountInfo = new TableLayoutPanel
@@ -809,7 +868,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         accountInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
         layout.Controls.Add(accountInfo, 1, 0);
 
-        accountInfo.Controls.Add(new Label
+        var nameLabel = new Label
         {
             Text = AccountUsageHelpers.DisplayName(account),
             Dock = DockStyle.Fill,
@@ -818,8 +877,9 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             BackColor = Color.Transparent,
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
-        }, 0, 0);
-        accountInfo.Controls.Add(new Label
+        };
+        accountInfo.Controls.Add(nameLabel, 0, 0);
+        var healthLabel = new Label
         {
             Text = AccountUsageHelpers.HealthLabel(status),
             Dock = DockStyle.Fill,
@@ -827,8 +887,9 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             BackColor = Color.Transparent,
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
-        }, 0, 1);
-        accountInfo.Controls.Add(new Label
+        };
+        accountInfo.Controls.Add(healthLabel, 0, 1);
+        var metaLabel = new Label
         {
             Text = string.IsNullOrWhiteSpace(account.OrganizationName) ? AccountUsageHelpers.FormatLastChecked(account.LastChecked) : account.OrganizationName,
             Dock = DockStyle.Fill,
@@ -836,13 +897,34 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             BackColor = Color.Transparent,
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
-        }, 0, 2);
+        };
+        accountInfo.Controls.Add(metaLabel, 0, 2);
 
-        layout.Controls.Add(MakePlanBadge(account), 2, 0);
-        layout.Controls.Add(MakeUsageBlock(account, config), 3, 0);
-        layout.Controls.Add(MakeRowActions(account, isActive), 4, 0);
+        var plan = (Label)MakePlanBadge(account);
+        var usageBlock = (TableLayoutPanel)MakeUsageBlock(account.AccountId, account, config);
+        var usage = (Label)usageBlock.GetControlFromPosition(0, 0)!;
+        var reset = (Label)usageBlock.GetControlFromPosition(0, 1)!;
+        var credits = (LinkLabel)usageBlock.GetControlFromPosition(0, 2)!;
+        var actions = (FlowLayoutPanel)MakeRowActions(account.AccountId, isActive, out var delete, out var refresh, out var activate);
+        layout.Controls.Add(plan, 2, 0);
+        layout.Controls.Add(usageBlock, 3, 0);
+        layout.Controls.Add(actions, 4, 0);
 
-        return row;
+        return new AccountRowView
+        {
+            Root = row,
+            Marker = marker,
+            Name = nameLabel,
+            Health = healthLabel,
+            Meta = metaLabel,
+            Plan = plan,
+            Usage = usage,
+            Reset = reset,
+            Credits = credits,
+            Delete = delete,
+            Refresh = refresh,
+            Activate = activate,
+        };
     }
 
     private Control MakePlanBadge(TokenAccount account)
@@ -861,7 +943,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         return label;
     }
 
-    private Control MakeUsageBlock(TokenAccount account, CodexBarConfig config)
+    private Control MakeUsageBlock(string accountId, TokenAccount account, CodexBarConfig config)
     {
         var panel = new TableLayoutPanel
         {
@@ -903,12 +985,17 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand, TabStop = true,
         };
         _toolTip.SetToolTip(details, AccountUsageHelpers.DetailsText(account, config.OpenAI.UsageDisplayMode));
-        details.LinkClicked += (_, _) => { using var form = new AccountDetailsForm(account, config.OpenAI.UsageDisplayMode); form.ShowDialog(this); };
+        details.LinkClicked += (_, _) =>
+        {
+            if (FindCurrentAccount(accountId) is not { } current) return;
+            using var form = new AccountDetailsForm(current, _configStore.Config.OpenAI.UsageDisplayMode);
+            form.ShowDialog(this);
+        };
         panel.Controls.Add(details, 0, 2);
         return panel;
     }
 
-    private Control MakeRowActions(TokenAccount account, bool isActive)
+    private Control MakeRowActions(string accountId, bool isActive, out Button? deleteButton, out Button refreshButton, out Button activateButton)
     {
         var panel = new FlowLayoutPanel
         {
@@ -918,30 +1005,97 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             BackColor = Color.Transparent,
             Padding = new Padding(0, 26, 0, 0),
         };
+        deleteButton = null;
         if (_deleteAccountRequested is not null)
         {
             var delete = new FluentButton();
             ConfigureButton(delete, "删除", false, 54);
             delete.ForeColor = FluentTheme.Critical;
-            delete.Click += (_, _) => _deleteAccountRequested(account);
+            delete.Click += (_, _) =>
+            {
+                if (FindCurrentAccount(accountId) is { } current) _deleteAccountRequested(current);
+            };
             panel.Controls.Add(delete);
+            deleteButton = delete;
         }
         var refresh = new FluentButton();
         ConfigureButton(refresh, "刷新", false, 54);
         _toolTip.SetToolTip(refresh, "刷新此账号");
-        refresh.Click += async (_, _) => await RefreshSingleAsync(account, refresh).ConfigureAwait(false);
+        refresh.Click += async (_, _) =>
+        {
+            if (FindCurrentAccount(accountId) is { } current) await RefreshSingleAsync(current, refresh).ConfigureAwait(false);
+        };
         panel.Controls.Add(refresh);
 
         var activate = new FluentButton();
         ConfigureButton(activate, isActive ? "已选" : "切换", !isActive, 68);
+        activate.Tag = !isActive;
         activate.Enabled = !isActive;
         activate.Click += (_, _) =>
         {
-            _activateAccount(account);
+            if (FindCurrentAccount(accountId) is { } current) _activateAccount(current);
             RefreshData();
         };
         panel.Controls.Add(activate);
+        refreshButton = refresh;
+        activateButton = activate;
         return panel;
+    }
+
+    private TokenAccount? FindCurrentAccount(string accountId)
+        => _registry.Accounts.FirstOrDefault(account => string.Equals(account.AccountId, accountId, StringComparison.Ordinal));
+
+    private void UpdateAccountRow(AccountRowView row, TokenAccount account, CodexBarConfig config)
+    {
+        var active = string.Equals(account.AccountId, _registry.ActiveAccountId, StringComparison.Ordinal);
+        var status = AccountUsageHelpers.Health(account, config.OpenAI.WarningThresholdPercent, config.OpenAI.DangerThresholdPercent);
+        var accent = HealthColor(status);
+        var name = AccountUsageHelpers.DisplayName(account);
+        var meta = string.IsNullOrWhiteSpace(account.OrganizationName) ? AccountUsageHelpers.FormatLastChecked(account.LastChecked) : account.OrganizationName;
+        var plan = AccountUsageHelpers.PlanLabel(account);
+        var usage = AccountUsageHelpers.UsageText(account, config.OpenAI.UsageDisplayMode);
+        var reset = "重置 " + AccountUsageHelpers.ResetText(account);
+        var credits = AccountUsageHelpers.CreditSummary(account) + " · 详情";
+
+        if (row.Root.BackColor != (active ? Color.FromArgb(229, 240, 252) : FluentTheme.SubtleBackground))
+            row.Root.BackColor = active ? Color.FromArgb(229, 240, 252) : FluentTheme.SubtleBackground;
+        var border = active ? FluentTheme.Accent : FluentTheme.StrokeDefault;
+        if (row.Root.BorderColor != border) row.Root.BorderColor = border;
+        if (row.Marker.ForeColor != accent) row.Marker.ForeColor = accent;
+        if (row.Health.ForeColor != accent) row.Health.ForeColor = accent;
+        if (row.Plan.ForeColor != PlanColor(account)) row.Plan.ForeColor = PlanColor(account);
+        SetTextIfChanged(row.Name, name);
+        SetTextIfChanged(row.Health, AccountUsageHelpers.HealthLabel(status));
+        SetTextIfChanged(row.Meta, meta);
+        SetTextIfChanged(row.Plan, plan);
+        SetTextIfChanged(row.Usage, usage);
+        SetTextIfChanged(row.Reset, reset);
+        SetTextIfChanged(row.Credits, credits);
+        SetToolTipIfChanged(row.Root, active ? "当前账号" : "双击切换到此账号");
+        SetToolTipIfChanged(row.Credits, AccountUsageHelpers.DetailsText(account, config.OpenAI.UsageDisplayMode));
+        SetToolTipIfChanged(row.Refresh, "刷新此账号");
+
+        if (row.Delete is not null) SetToolTipIfChanged(row.Delete, "删除此账号");
+        var activateEnabled = !active;
+        if (row.Activate.Enabled != activateEnabled) row.Activate.Enabled = activateEnabled;
+        SetTextIfChanged(row.Activate, active ? "已选" : "切换");
+        var primary = !active;
+        if (row.Activate.Tag is not bool oldPrimary || oldPrimary != primary)
+        {
+            ConfigureButton(row.Activate, active ? "已选" : "切换", primary, 68);
+            row.Activate.Tag = primary;
+            row.Activate.Enabled = !active;
+        }
+    }
+
+    private static void SetTextIfChanged(Control control, string value)
+    {
+        if (!string.Equals(control.Text, value, StringComparison.Ordinal)) control.Text = value;
+    }
+
+    private void SetToolTipIfChanged(Control control, string value)
+    {
+        if (!string.Equals(_toolTip.GetToolTip(control), value, StringComparison.Ordinal)) _toolTip.SetToolTip(control, value);
     }
 
     private async Task ManualRefreshAsync()
@@ -1010,7 +1164,7 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         var width = Math.Max(640, _accountList.ClientSize.Width - _accountList.Padding.Horizontal - 8);
         foreach (Control control in _accountList.Controls)
         {
-            control.Width = width;
+            if (control.Width != width) control.Width = width;
         }
     }
 
@@ -1113,6 +1267,24 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
         }
     }
 
+    private sealed class BufferedPanel : Panel
+    {
+        public BufferedPanel()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+    }
+
+    private sealed class BufferedTableLayoutPanel : TableLayoutPanel
+    {
+        public BufferedTableLayoutPanel()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+    }
+
     private sealed class RoundedPanel : Panel
     {
         public Color BorderColor { get; set; } = FluentTheme.StrokeDefault;
@@ -1153,19 +1325,17 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             var delta = Math.Sign(e.Delta) * Math.Max(24, ScrollQuantum);
             var target = Math.Clamp(VerticalScroll.Value - delta, VerticalScroll.Minimum, max);
             AutoScrollPosition = new Point(0, target);
-            PerformLayout();
-            Invalidate(true);
         }
 
         protected override void OnScroll(ScrollEventArgs se)
         {
             base.OnScroll(se);
             if (se.ScrollOrientation == ScrollOrientation.VerticalScroll
+                && ScrollQuantum > 0
                 && se.Type is not ScrollEventType.ThumbTrack)
             {
                 BeginInvoke(new Action(SnapVerticalScroll));
             }
-            Invalidate(true);
         }
 
         private void SnapVerticalScroll()
@@ -1182,9 +1352,6 @@ public sealed class CodexBarDashboardForm : AdaptiveForm
             {
                 AutoScrollPosition = new Point(0, snapped);
             }
-
-            PerformLayout();
-            Invalidate(true);
         }
     }
 

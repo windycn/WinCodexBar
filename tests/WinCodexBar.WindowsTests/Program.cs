@@ -40,6 +40,7 @@ internal static class Program
                 AppAppearance.ScalePercent = scale;
                 using var settings = new SettingsForm(store, wake, () => {}, () => {});
                 settings.Show();
+                Check(Math.Abs(settings.Font.Size - 14f * scale / 100f) < 0.5f, $"initial DPI scale applied before first frame {scale}%");
                 if (scale == 100) ProbeFont(settings.Font);
                 Console.WriteLine($"Text font: {settings.Font.Name}; family: {settings.Font.FontFamily.Name}; style: {settings.Font.Style}; size: {settings.Font.Size}");
                 foreach (var size in new[] {new Size(800,600),new Size(1366,768),new Size(1920,1080)})
@@ -82,6 +83,18 @@ internal static class Program
             using (var dashboard = new CodexBarDashboardForm(registry,store,new UsageRefreshCoordinator(new OpenAIUsageService(),new OpenAIOAuthRefreshService(),registry),_=>{},()=>{},()=>{},()=>{},()=>{},()=>false,_=>{},_=>{}))
             {
                 dashboard.Show(); dashboard.Size=new Size(960,680); dashboard.ApplyAppearance(); Paint(dashboard,"dashboard.png");
+                var accountList = (Control)Field(dashboard,"_accountList")!;
+                var accountRows = accountList.Controls.Cast<Control>().ToArray();
+                var unchangedRowPaints = 0;
+                accountRows[0].Paint += (_, _) => unchangedRowPaints++;
+                dashboard.RefreshData();
+                Application.DoEvents();
+                Check(accountRows.SequenceEqual(accountList.Controls.Cast<Control>()),"dashboard refresh reuses account row controls");
+                Check(unchangedRowPaints==0,"unchanged dashboard refresh does not repaint account rows");
+                Check((bool)typeof(Control).GetProperty("DoubleBuffered",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(dashboard)!,"dashboard form uses double-buffered painting");
+                var createParams=(CreateParams)typeof(Control).GetProperty("CreateParams",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(dashboard)!;
+                Check((createParams.ExStyle&0x02000000)==0,"dashboard avoids slow whole-window child compositing");
+                Check((bool)typeof(Control).GetProperty("DoubleBuffered",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(accountList)!,"account list buffers its own scrolling paint");
                 foreach(var button in Descendants(dashboard).OfType<Button>().Where(b=>b.Text is "设置" or "删除" or "导出账号"))
                     Check(button.Parent!.ClientRectangle.Contains(button.Bounds),"dashboard button reachable: "+button.Text);
                 dashboard.Close(); Check(!dashboard.Visible && !dashboard.IsDisposed,"dashboard close hides for reuse");
@@ -101,6 +114,7 @@ internal static class Program
             }
             AppAppearance.ScalePercent = 100;
             TestPopup(registry);
+            TestAwayMode();
             TestInstaller(home);
             Console.WriteLine($"{_passed} Windows checks passed");
         }
@@ -135,26 +149,25 @@ internal static class Program
     private static void TestPopup(AccountRegistry registry)
     {
         var deleted=false;
+        var popupClosedBeforeDialog=false;
+        var selectedAwayDelay=0;
+        var startedAwayDelay=0;
         TrayPopupForm? popup=null;
         popup=new TrayPopupForm(registry.Accounts,registry.ActiveAccountId,()=>false,default,CodexRadarPrediction.Unavailable,new CodexBarConfig(),_=>{},()=>{},()=>{},()=>{},()=>{},()=>{},()=>{},_=>{},()=>{},_=>{},account=>
         {
+            popupClosedBeforeDialog = !popup!.Visible || popup.IsDisposed;
             using var dialog=new ConfirmActionDialog("删除账号","只删除测试账号，不影响会话。","删除");
             using var timer=new System.Windows.Forms.Timer {Interval=100};
             timer.Tick+=(_,_)=>
             {
                 timer.Stop();
                 var confirm=Descendants(dialog).OfType<Button>().Single(b=>b.Text=="删除");
-                var point=confirm.PointToScreen(new Point(confirm.Width/2,confirm.Height/2));
-                var data=new MouseHookData { X=point.X,Y=point.Y };
-                var pointer=Marshal.AllocHGlobal(Marshal.SizeOf<MouseHookData>());
-                try { Marshal.StructureToPtr(data,pointer,false); Call(popup!,"MouseHookCallback",0,new IntPtr(0x0201),pointer); Application.DoEvents(); }
-                finally {Marshal.FreeHGlobal(pointer);}
-                Check(!popup!.IsDisposed,"outside-click hook preserves owned confirmation");
+                Check(popupClosedBeforeDialog,"topmost tray popup closes before delete confirmation");
                 confirm.PerformClick();
             };
             timer.Start();
-            deleted=dialog.ShowDialog(popup)==DialogResult.OK;
-        },()=>{});
+            deleted=dialog.ShowDialog()==DialogResult.OK;
+        },()=>{},delay=>startedAwayDelay=delay,delay=>selectedAwayDelay=delay,5);
         using(popup)
         {
             var watch=Stopwatch.StartNew();
@@ -163,7 +176,28 @@ internal static class Program
             popup.UpdateRadarPrediction(CodexRadarPrediction.Unavailable with { IsAvailable = true, WindowOpen = false });
             Paint(popup,"popup.png");
             Check(Screen.FromControl(popup).WorkingArea.Contains(popup.Bounds),"popup fits work area");
+            var accountHeight=popup.Height;
+            popup.UpdateSnapshot(null,null,new CodexBarConfig(),Array.Empty<TokenAccount>()); Paint(popup);
+            Check(popup.Height<accountHeight,"popup resizes after last account removed");
+            popup.UpdateSnapshot(registry.ActiveAccountId,null,new CodexBarConfig(),registry.Accounts); Paint(popup);
             var hits=((IEnumerable)Field(popup,"_hits")!).Cast<object>().ToArray();
+            var tooltips=hits.Select(h=>(string?)h.GetType().GetField("Tooltip")!.GetValue(h)).ToArray();
+            Check(tooltips.Contains("黑屏离开；5 秒后开始；倒计时按 Esc 取消"),"blackout action names its behavior and countdown");
+            Check(tooltips.Contains("当前未保持唤醒；点击开启"),"keep-awake action names its current state and effect");
+            Check(tooltips.Contains("黑屏前等待 5 秒") && tooltips.Contains("黑屏前等待 15 秒") && tooltips.Contains("黑屏前等待 30 秒"),"quick popup exposes all supported blackout delays");
+            Check(new[] {"打开主页","添加 OpenAI 账号","导入账号文件","导出账号","设置","退出 WinCodexBar"}.All(tooltips.Contains),"secondary actions are labeled instead of icon-only");
+            var awayHit=hits.First(h=>(string?)h.GetType().GetField("Tooltip")!.GetValue(h)=="黑屏离开；5 秒后开始；倒计时按 Esc 取消");
+            var keepAwakeHit=hits.First(h=>(string?)h.GetType().GetField("Tooltip")!.GetValue(h)=="当前未保持唤醒；点击开启");
+            var awayBounds=(RectangleF)awayHit.GetType().GetField("Bounds")!.GetValue(awayHit)!;
+            var keepAwakeBounds=(RectangleF)keepAwakeHit.GetType().GetField("Bounds")!.GetValue(keepAwakeHit)!;
+            Check(Math.Abs(awayBounds.Top-keepAwakeBounds.Top)<0.1f && awayBounds.Width>=keepAwakeBounds.Width,"primary quick actions have consistent, readable button sizing");
+            Call(popup,"SetAwayModeDelay",15);
+            Check(selectedAwayDelay==15 && (int)Field(popup,"_awayModeDelaySeconds")! == 15,"blackout delay selection updates and persists through the callback");
+            ((Action)awayHit.GetType().GetField("Action")!.GetValue(awayHit)!)();
+            Check(startedAwayDelay==15,"blackout starts with the selected delay");
+            Paint(popup,"popup.png");
+            hits=((IEnumerable)Field(popup,"_hits")!).Cast<object>().ToArray();
+            Check(hits.Any(h=>(string?)h.GetType().GetField("Tooltip")!.GetValue(h)=="黑屏前等待 15 秒"),"selected blackout delay remains available in the quick popup");
             var hit=hits.First(h=>(string?)h.GetType().GetField("Tooltip")!.GetValue(h)=="删除此账号");
             var rect=(RectangleF)hit.GetType().GetField("Bounds")!.GetValue(hit)!;
             var point=new Point((int)(rect.Left+rect.Width/2),(int)(rect.Top+rect.Height/2));
@@ -173,11 +207,37 @@ internal static class Program
             Call(popup,"OnMouseDown",new MouseEventArgs(MouseButtons.Left,1,point.X,point.Y,0));
             Paint(popup);
             Call(popup,"OnMouseUp",new MouseEventArgs(MouseButtons.Left,1,point.X,point.Y,0));
-            Check(deleted && !popup.IsDisposed,"delete confirmation accepts without closing parent");
-            popup.UpdateSnapshot(null,null,new CodexBarConfig(),Array.Empty<TokenAccount>()); Paint(popup);
-            Check(popup.Height<550,"popup resizes after last account removed");
-            popup.Close();
+            Check(deleted && popupClosedBeforeDialog && (popup.IsDisposed || !popup.Visible),"delete confirmation accepts after closing the topmost popup");
         }
+    }
+
+    private static void TestAwayMode()
+    {
+        using var awayMode = new AwayModeController();
+        awayMode.Start(5);
+        var countdown = Application.OpenForms.Cast<Form>().Single(form => form.GetType().Name == "AwayModeCountdownForm");
+        Check(awayMode.IsCountdownPending && !awayMode.IsActive && countdown.TopMost,"away mode shows a non-blocking countdown before blacking out");
+        Check(Descendants(countdown).OfType<Label>().Any(label => label.Text.Contains("5 秒后进入黑屏"))
+              && Descendants(countdown).OfType<Label>().Any(label => label.Text.Contains("不会锁屏") && label.Text.Contains("不会中断 Codex")),
+            "countdown explains the delay, wake behavior, and no-lock behavior");
+        awayMode.CancelPendingStart();
+        Check(!awayMode.IsCountdownPending && !awayMode.IsActive,"countdown can be cancelled without activating blackout");
+        awayMode.Start();
+        Check(awayMode.IsActive,"away mode starts without changing Windows lock state");
+        var overlays = Application.OpenForms.Cast<Form>().Where(form => form.GetType().Name == "AwayModeOverlayForm").ToArray();
+        Check(overlays.Length == Screen.AllScreens.Length,"away mode covers every display");
+        Check(overlays.All(form => form.TopMost && form.FormBorderStyle == FormBorderStyle.None && form.BackColor == Color.Black && !form.ShowInTaskbar),"away mode uses black topmost overlays");
+
+        var origin = Cursor.Position;
+        var primary = overlays.Single(form => form.Bounds.Contains(origin));
+        Call(primary,"OnKeyPressed",primary,new KeyEventArgs(Keys.Space));
+        Check(!awayMode.IsActive,"pressing a key wakes away mode");
+
+        awayMode.Start();
+        overlays = Application.OpenForms.Cast<Form>().Where(form => form.GetType().Name == "AwayModeOverlayForm").ToArray();
+        primary = overlays.Single(form => form.Bounds.Contains(Cursor.Position));
+        Call(primary,"OnPointerMoved",primary,new MouseEventArgs(MouseButtons.None,0,origin.X + 3 - primary.Bounds.Left,origin.Y - primary.Bounds.Top,0));
+        Check(!awayMode.IsActive,"moving the mouse wakes away mode");
     }
     private static void TestInstaller(string home)
     {

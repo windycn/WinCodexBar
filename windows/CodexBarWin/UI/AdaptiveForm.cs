@@ -6,6 +6,15 @@ namespace CodexBarWin.UI;
 /// <summary>以 96 DPI 为设计基准，小屏保留滚动入口，窗口始终位于当前显示器工作区。</summary>
 public class AdaptiveForm : Form
 {
+    private sealed class BufferedViewportPanel : Panel
+    {
+        public BufferedViewportPanel()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+    }
+
     private Panel? _viewport;
     private Control? _content;
     private Size _logicalMinimum;
@@ -15,13 +24,15 @@ public class AdaptiveForm : Form
     {
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.None;
+        DoubleBuffered = true;
+        SetStyle(ControlStyles.AllPaintingInWmPaint, true);
     }
 
     protected void InstallScrollableContent(Control content, Size logicalMinimum)
     {
         _logicalMinimum = logicalMinimum;
         _content = content;
-        _viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = logicalMinimum != Size.Empty, BackColor = Color.Transparent };
+        _viewport = new BufferedViewportPanel { Dock = DockStyle.Fill, AutoScroll = logicalMinimum != Size.Empty, BackColor = Color.Transparent };
         content.Dock = logicalMinimum == Size.Empty ? DockStyle.Fill : DockStyle.None;
         content.Margin = Padding.Empty;
         content.Anchor = AnchorStyles.Top | AnchorStyles.Left;
@@ -45,6 +56,15 @@ public class AdaptiveForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        // Defer only screen clamping until WinForms has applied StartPosition. Scaling itself
+        // happens in OnLoad so the first visible frame already uses the selected DPI.
+        FitToScreen();
+        LayoutContent();
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
         ApplyAppearance();
     }
 

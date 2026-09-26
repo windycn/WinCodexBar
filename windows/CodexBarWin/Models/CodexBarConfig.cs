@@ -249,10 +249,13 @@ public sealed class CodexBarConfig
     public bool AutoCheckUpdates { get; set; } = true;
 
     [JsonPropertyName("keep_awake_enabled")]
-    public bool KeepAwakeEnabled { get; set; } = true;
+    public bool KeepAwakeEnabled { get; set; }
+
+    [JsonPropertyName("away_mode_delay_seconds")]
+    public int AwayModeDelaySeconds { get; set; } = 5;
 
     [JsonPropertyName("advanced_keep_awake_enabled")]
-    public bool AdvancedKeepAwakeEnabled { get; set; } = true;
+    public bool AdvancedKeepAwakeEnabled { get; set; }
 
     [JsonPropertyName("advanced_keep_awake_idle_threshold_ms")]
     public int AdvancedKeepAwakeIdleThresholdMs { get; set; } = 120_000;
@@ -280,6 +283,7 @@ public sealed class CodexBarConfig
             TrayIconStyle = TrayIconStyle,
             AutoCheckUpdates = AutoCheckUpdates,
             KeepAwakeEnabled = KeepAwakeEnabled,
+            AwayModeDelaySeconds = AwayModeDelaySeconds,
             AdvancedKeepAwakeEnabled = AdvancedKeepAwakeEnabled,
             AdvancedKeepAwakeIdleThresholdMs = AdvancedKeepAwakeIdleThresholdMs,
             AdvancedKeepAwakeIntervalMs = AdvancedKeepAwakeIntervalMs,

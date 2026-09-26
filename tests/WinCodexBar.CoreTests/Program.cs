@@ -12,21 +12,26 @@ void Check(bool result, string name) { if (!result) throw new Exception(name); C
 void Reject(Action action, string name) { try { action(); } catch (InvalidDataException) { Check(true, name); return; } throw new Exception("Expected rejection: " + name); }
 try
 {
+    var defaults = new CodexBarConfig();
+    Check(!defaults.KeepAwakeEnabled && !defaults.AdvancedKeepAwakeEnabled, "keep-awake modes are disabled for new installs");
+    Check(defaults.AwayModeDelaySeconds == 5, "away mode starts with a five-second countdown");
     var settings = new CodexBarConfigStore();
-    settings.Update(c => { c.KeepAwakeEnabled = false; c.AdvancedKeepAwakeEnabled = false; c.StartWithWindows = false; c.AutoCheckUpdates = false; c.UiScalePercent = 200; c.TrayIconStyle = "percent"; c.Global.DefaultModel = "custom-model"; });
+    settings.Update(c => { c.KeepAwakeEnabled = false; c.AwayModeDelaySeconds = 15; c.AdvancedKeepAwakeEnabled = false; c.StartWithWindows = false; c.AutoCheckUpdates = false; c.UiScalePercent = 200; c.TrayIconStyle = "percent"; c.Global.DefaultModel = "custom-model"; });
     AppDataMigration.EnsureVersionBackup();
     AppDataMigration.EnsureVersionBackup();
     Check(Directory.GetDirectories(Path.Combine(CodexPaths.CodexBarRoot,"backups")).Length == 1, "upgrade backup runs once per version");
     settings.Load();
     Check(!settings.Config.KeepAwakeEnabled && !settings.Config.AdvancedKeepAwakeEnabled && !settings.Config.StartWithWindows && !settings.Config.AutoCheckUpdates, "false settings survive restart");
+    Check(settings.Config.AwayModeDelaySeconds == 15, "away delay choice survives restart");
     Check(settings.Config.UiScalePercent == 200 && settings.Config.TrayIconStyle == "percent", "appearance survives restart");
     Check(settings.Config.Global.DefaultModel == "custom-model", "upgrade preserves custom model");
     Check(settings.Config.OpenAI.TokenPricePresets.ContainsKey("gpt-6-astra") && settings.Config.OpenAI.TokenPricePresets["gpt-6-sol"].OutputUsdPerMillion == 10, "GPT-6 presets merged");
+    Check(settings.Config.Clone().AwayModeDelaySeconds == 15, "away delay survives settings drafts");
     var clone = settings.Config.Clone(); clone.OpenAI.TokenPricePresets["gpt-6-sol"].OutputUsdPerMillion = 1;
     Check(settings.Config.OpenAI.TokenPricePresets["gpt-6-sol"].OutputUsdPerMillion == 10, "draft pricing isolated");
-    File.WriteAllText(CodexPaths.WindowsSettingsPath, "{\"KeepAwakeEnabled\":false,\"openai\":{\"auto_refresh_interval_seconds\":2147483647},\"ui_scale_percent\":-5}");
+    File.WriteAllText(CodexPaths.WindowsSettingsPath, "{\"KeepAwakeEnabled\":false,\"away_mode_delay_seconds\":999,\"openai\":{\"auto_refresh_interval_seconds\":2147483647},\"ui_scale_percent\":-5}");
     settings.Load();
-    Check(!settings.Config.KeepAwakeEnabled && settings.Config.OpenAI.AutoRefreshIntervalSeconds == 86400 && settings.Config.UiScalePercent == 0, "legacy settings and invalid ranges");
+    Check(!settings.Config.KeepAwakeEnabled && settings.Config.AwayModeDelaySeconds == 5 && settings.Config.OpenAI.AutoRefreshIntervalSeconds == 86400 && settings.Config.UiScalePercent == 0, "legacy settings and invalid ranges");
     File.WriteAllText(Path.Combine(CodexPaths.CodexRoot,"models_cache.json"), "{\"models\":[{\"slug\":\"gpt-future\",\"supported_reasoning_levels\":[{\"effort\":\"ultra\"}],\"service_tiers\":[{\"id\":\"priority\"}]}]}");
     Check(CodexModelCatalog.Models().Contains("gpt-future") && CodexModelCatalog.Efforts("gpt-future").Contains("ultra"), "local model catalog extends choices");
     Check(CodexModelCatalog.ConfigTier("gpt-future","standard") is null && CodexModelCatalog.ConfigTier("gpt-future","priority") == "fast", "service tier writes supported values only");
@@ -90,6 +95,7 @@ try
     });
     foreach (var arch in new[] { "x86", "x64", "arm64" })
         Check(AppUpdateService.ParseRelease(Release("v0.3.0", arch), new Version(0,2,0,0), arch)?.AssetName.EndsWith(arch + ".zip") == true, "matching update architecture " + arch);
+    Check(AppUpdateService.ParseRelease(Release("v0.2.1"), new Version(0,2,0,0), "x64")?.Version == new Version(0,2,1), "0.2.0 can update directly to 0.2.1");
     Check(AppUpdateService.ParseRelease(Release("v0.2.0"), new Version(0,2,0,0), "x64") is null, "same version not updated");
     Check(AppUpdateService.ParseRelease(Release("v0.3.0", preview:true), new Version(0,2,0), "x64") is null, "prerelease ignored");
     Reject(() => AppUpdateService.ParseRelease(Release("v0.3.0").Replace("https://github.com/", "https://example.test/"), new Version(0,2,0), "x64"), "foreign download rejected");

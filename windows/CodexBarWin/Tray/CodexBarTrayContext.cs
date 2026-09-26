@@ -35,8 +35,8 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private static readonly Color TraySecondaryText = Color.FromArgb(96, 108, 123);
     private static readonly Color TrayMutedText = Color.FromArgb(137, 148, 162);
     private static readonly Color TrayAccent = Color.FromArgb(0, 113, 227);
-    private static readonly TimeSpan PopupActiveRefreshStaleAfter = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan BackgroundInactiveRefreshStaleAfter = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan PopupActiveRefreshStaleAfter = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan BackgroundInactiveRefreshStaleAfter = TimeSpan.FromMinutes(5);
     private readonly NotifyIcon _notifyIcon;
     private readonly AccountRegistry _registry;
     private readonly CodexBarConfigStore _configStore;
@@ -58,6 +58,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private DateTimeOffset _popupScannedAt;
     private string? _lastTrayIconKey;
     private readonly AppUpdateService _updateService = new();
+    private readonly AwayModeController _awayModeController = new();
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 30000 };
     private bool _updateBusy;
     private bool _isExiting;
@@ -120,6 +121,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
             _isExiting = true;
             _updateTimer.Dispose();
             _keepAwakeService.ClearForProcessExit();
+            _awayModeController.Dispose();
             _autoRefreshTimer.Stop();
             _autoRefreshTimer.Dispose();
             _popupForm?.Dispose();
@@ -231,6 +233,19 @@ public sealed class CodexBarTrayContext : ApplicationContext
             IsAnyKeepAwakeEnabled() ? "healthy" : "warning",
             () => SetKeepAwakeEnabled(!IsAnyKeepAwakeEnabled()));
         menu.Items.Add(keepAwake);
+        menu.Items.Add(CreateActionItem($"黑屏离开（{_configStore.Config.AwayModeDelaySeconds} 秒后）", "away", StartAwayMode));
+        var awayDelayMenu = new ToolStripMenuItem("黑屏前等待");
+        foreach (var seconds in new[] { 5, 15, 30 })
+        {
+            var delayItem = new ToolStripMenuItem($"{seconds} 秒")
+            {
+                Checked = _configStore.Config.AwayModeDelaySeconds == seconds,
+                CheckOnClick = false,
+            };
+            delayItem.Click += (_, _) => SetAwayModeDelay(seconds);
+            awayDelayMenu.DropDownItems.Add(delayItem);
+        }
+        menu.Items.Add(awayDelayMenu);
 
         var addItem = CreateActionItem("添加 OpenAI 账号", "add", AddOpenAIAccount);
         menu.Items.Add(addItem);
@@ -925,9 +940,10 @@ public sealed class CodexBarTrayContext : ApplicationContext
             return;
         }
 
-        var interval = Math.Clamp(settings.AutoRefreshIntervalSeconds, 60, 86400);
         _autoRefreshTimer.Stop();
-        _autoRefreshTimer.Interval = interval * 1000;
+        // Poll at the same cadence as the macOS app; per-account age gates below decide
+        // whether the active account (60s by default) or inactive accounts (5m) are due.
+        _autoRefreshTimer.Interval = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
         _autoRefreshTimer.Start();
     }
 
@@ -1087,7 +1103,10 @@ public sealed class CodexBarTrayContext : ApplicationContext
             () => SetKeepAwakeEnabled(!IsAnyKeepAwakeEnabled()),
             RefreshSingleAccountFromPopup,
             DeleteAccountFromPopup,
-            ExitThread);
+            ExitThread,
+            StartAwayMode,
+            SetAwayModeDelay,
+            _configStore.Config.AwayModeDelaySeconds);
         var popup = _popupForm;
         popup.FormClosed += (_, _) =>
         {
@@ -1150,6 +1169,24 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private bool IsAnyKeepAwakeEnabled()
     {
         return _keepAwakeService.IsEnabled || _keepAwakeService.IsAdvancedEnabled;
+    }
+
+    private void StartAwayMode()
+    {
+        StartAwayMode(_configStore.Config.AwayModeDelaySeconds);
+    }
+
+    private void StartAwayMode(int delaySeconds)
+    {
+        _notifyIcon.ContextMenuStrip?.Close(ToolStripDropDownCloseReason.ItemClicked);
+        _awayModeController.Start(delaySeconds);
+    }
+
+    private void SetAwayModeDelay(int delaySeconds)
+    {
+        if (delaySeconds is not (5 or 15 or 30) || _configStore.Config.AwayModeDelaySeconds == delaySeconds) return;
+        _configStore.Update(config => config.AwayModeDelaySeconds = delaySeconds);
+        RebuildMenu();
     }
 
     private void SetAccountUsageMode(AccountUsageMode mode)
@@ -1358,7 +1395,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
         _backgroundRefreshRunning = true;
         try
         {
-            report = await _refreshCoordinator.RefreshAsync(accounts, maxParallel: Math.Min(2, accounts.Length)).ConfigureAwait(true);
+            report = await _refreshCoordinator.RefreshAsync(accounts, maxParallel: Math.Min(3, accounts.Length)).ConfigureAwait(true);
         }
         catch
         {
@@ -1579,7 +1616,7 @@ public sealed class CodexBarTrayContext : ApplicationContext
     private void UpdateTrayIcon()
     {
         var usage = ResolveTrayUsage();
-        var key = $"{_configStore.Config.TrayIconStyle}:{usage.primary:F0}:{usage.hasActive}";
+        var key = TrayIconRenderer.CacheKey(_configStore.Config.TrayIconStyle, usage.primary, usage.secondary, usage.hasActive);
         if (_lastTrayIconKey == key) return;
         _lastTrayIconKey = key;
         var previous = _notifyIcon.Icon;
@@ -1589,58 +1626,9 @@ public sealed class CodexBarTrayContext : ApplicationContext
 
     private Icon CreateTrayIcon((double? primary, double? secondary, bool hasActive) usage)
     {
-        if (_configStore.Config.TrayIconStyle == "classic") return AppIconProvider.CreateWindowIcon() ?? (Icon)SystemIcons.Application.Clone();
-        var size = 64;
-        using var bmp = new Bitmap(size, size);
-        using var g = Graphics.FromImage(bmp);
-        g.Clear(Color.Transparent);
-        g.ScaleTransform(2, 2);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.CompositingQuality = CompositingQuality.HighQuality;
-
-        var hasUsage = usage.primary.HasValue && HasUsageValue(usage.primary.Value);
-        var primary = hasUsage ? ClampUsage(usage.primary!.Value) : 0d;
-        var accent = hasUsage ? ResolveUsageColor(primary) : Color.FromArgb(132, 143, 156);
-        var trackColor = usage.hasActive ? Color.FromArgb(218, 226, 236) : Color.FromArgb(196, 204, 214);
-        var ringBounds = new RectangleF(6.25f, 6.25f, 19.5f, 19.5f);
-
-        using (var glow = new Pen(Color.FromArgb(80, 255, 255, 255), 7.4f))
-        {
-            glow.StartCap = LineCap.Round;
-            glow.EndCap = LineCap.Round;
-            g.DrawArc(glow, ringBounds, -90, 360);
-        }
-
-        using (var track = new Pen(trackColor, 5.2f))
-        {
-            track.StartCap = LineCap.Round;
-            track.EndCap = LineCap.Round;
-            g.DrawArc(track, ringBounds, -90, 360);
-        }
-
-        if (hasUsage && primary > 0.25)
-        {
-            using var progress = new Pen(accent, 5.2f);
-            progress.StartCap = LineCap.Round;
-            progress.EndCap = LineCap.Round;
-            g.DrawArc(progress, ringBounds, -90, (float)(360d * primary / 100d));
-        }
-
-        using (var center = new SolidBrush(Color.FromArgb(235, 248, 250, 253)))
-        {
-            g.FillEllipse(center, 11.5f, 11.5f, 9f, 9f);
-        }
-
-        if (_configStore.Config.TrayIconStyle == "percent")
-        {
-            g.Clear(Color.Transparent);
-            using var bg = new SolidBrush(Color.FromArgb(245, 248, 252));
-            g.FillEllipse(bg, 0, 0, 32, 32);
-            using var font = new Font("Segoe UI", hasUsage && primary == 0 ? 13 : 17, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var brush = new SolidBrush(accent);
-            using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString(hasUsage ? Math.Round(100 - primary).ToString(CultureInfo.InvariantCulture) : "–", font, brush, new RectangleF(0, 0, 32, 32), format);
-        }
+        if (_configStore.Config.TrayIconStyle == "classic")
+            return AppIconProvider.CreateWindowIcon() ?? (Icon)SystemIcons.Application.Clone();
+        using var bmp = TrayIconRenderer.Render(_configStore.Config.TrayIconStyle, usage.primary, usage.secondary, usage.hasActive);
         var handle = bmp.GetHicon();
         try
         {
@@ -1652,7 +1640,6 @@ public sealed class CodexBarTrayContext : ApplicationContext
             DestroyIcon(handle);
         }
     }
-
     private static void DrawMiniUsageBar(Graphics graphics, Brush back, Brush fill, Rectangle rect, double value)
     {
         graphics.FillRectangle(back, rect);

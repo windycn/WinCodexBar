@@ -73,12 +73,6 @@ public sealed class SettingsForm : AdaptiveForm
         SelectPage(Page.Accounts);
     }
 
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        MicaSupport.TryApply(this);
-    }
-
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -364,7 +358,7 @@ public sealed class SettingsForm : AdaptiveForm
         _content.Controls.Add(MakeCheckNumberCard(
             FluentIcons.Refresh,
             "自动刷新",
-            "后台刷新当前账号，低频补齐其他账号。",
+            "当前账号按此间隔刷新；其他账号每 5 分钟刷新一次。",
             "启用自动刷新",
             _draft.OpenAI.AutoRefreshEnabled,
             enabled => _draft.OpenAI.AutoRefreshEnabled = enabled,
@@ -470,11 +464,41 @@ public sealed class SettingsForm : AdaptiveForm
         scale.SelectedIndex = _draft.UiScalePercent == 0 ? 0 : Math.Max(0, Array.IndexOf(scales, _draft.UiScalePercent + "%"));
         scale.SelectedIndexChanged += (_, _) => _draft.UiScalePercent = scale.SelectedIndex == 0 ? 0 : int.Parse(scale.Text.TrimEnd('%'));
         _content.Controls.Add(MakeCard(FluentIcons.Settings, "界面缩放", "自动模式随显示器 DPI 切换。小屏内容可滚动；保存后立即生效。", scale));
-        var styles = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
-        styles.Items.AddRange(new object[] { "额度圆环", "剩余百分比", "经典应用图标" });
-        styles.SelectedIndex = _draft.TrayIconStyle switch { "percent" => 1, "classic" => 2, _ => 0 };
-        styles.SelectedIndexChanged += (_, _) => _draft.TrayIconStyle = styles.SelectedIndex switch { 1 => "percent", 2 => "classic", _ => "ring" };
-        _content.Controls.Add(MakeCard(FluentIcons.Info, "托盘样式", "优先显示 5 小时额度；没有时显示 7 天额度。圆环为已用，数字为剩余。", styles));
+        var options = TrayIconRenderer.StyleOptions;
+        var styles = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 310 };
+        styles.Items.AddRange(options.Select(option => (object)option.Label).ToArray());
+        var selectedIndex = Math.Max(0, options.ToList().FindIndex(option => option.Id == _draft.TrayIconStyle));
+        styles.SelectedIndex = selectedIndex;
+        var previews = new TrayIconStylePreviewStrip(options[selectedIndex].Id) { Width = 560, Height = 84 };
+        void SelectStyle(int index)
+        {
+            if (index < 0 || index >= options.Count) return;
+            _draft.TrayIconStyle = options[index].Id;
+            previews.SelectedStyle = options[index].Id;
+        }
+        styles.SelectedIndexChanged += (_, _) => SelectStyle(styles.SelectedIndex);
+        previews.StyleSelected += style =>
+        {
+            var index = options.ToList().FindIndex(option => option.Id == style);
+            if (index >= 0) styles.SelectedIndex = index;
+        };
+        var styleOptions = new TableLayoutPanel
+        {
+            BackColor = Color.Transparent,
+            ColumnCount = 1,
+            RowCount = 2,
+            Width = 560,
+            Height = 120,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
+        };
+        styleOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        styleOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
+        styles.Dock = DockStyle.Fill;
+        previews.Dock = DockStyle.Fill;
+        styleOptions.Controls.Add(styles, 0, 0);
+        styleOptions.Controls.Add(previews, 0, 1);
+        _content.Controls.Add(MakeCard(FluentIcons.Info, "托盘图标样式", "点选下方预览即可切换样式；圆环、状态灯和进度条均按已用额度显示。", styleOptions, height: 202));
     }
 
     private void BuildModelsPage()

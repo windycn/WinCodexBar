@@ -18,10 +18,13 @@ public sealed class TrayPopupForm : Form
 
     private const float PopupLogicalWidth = 440f;
     private const float AccountListTop = 282f;
+    private const float ActionsFooterHeight = 142f;
+    private const float PopupMinimumLogicalHeight = AccountListTop + ActionsFooterHeight + 4f;
     private const float AccountListLeft = 16f;
     private const float AccountListWidth = 408f;
     private const float AccountRowHeight = 60f;
     private const float AccountRowGap = 8f;
+    private const float PopupFontScale = 1.08f;
 
     private sealed class Hit
     {
@@ -51,9 +54,12 @@ public sealed class TrayPopupForm : Form
     private readonly Action<TokenAccount> _refreshAccount;
     private readonly Action<TokenAccount> _deleteAccount;
     private readonly Action _exit;
+    private readonly Action<int> _startAwayMode;
+    private readonly Action<int> _setAwayModeDelaySeconds;
+    private int _awayModeDelaySeconds;
     private readonly List<Hit> _hits = new();
     private readonly ToolTip _toolTip = new() { InitialDelay = 320, ReshowDelay = 120, AutoPopDelay = 4000, ShowAlways = true };
-    private readonly System.Windows.Forms.Timer _refreshAnimationTimer = new() { Interval = 24 };
+    private readonly System.Windows.Forms.Timer _refreshAnimationTimer = new() { Interval = 16 };
     private string? _visibleTooltip;
     private float _scale = 1f;
     private float _scrollOffset;
@@ -62,6 +68,11 @@ public sealed class TrayPopupForm : Form
     private string? _refreshingAccountId;
     private DateTime _refreshAnimationStartedAt;
     private bool _refreshStopRequested;
+    private bool _refreshAnimationFramePending;
+    private RectangleF _refreshGlyphBounds;
+    private RectangleF _refreshGlyphVisibleBounds;
+    private int _refreshGlyphHitId = -1;
+    private TokenAccount? _refreshGlyphAccount;
     private bool _actionInProgress;
     private RectangleF? _hitClip;
     private float _viewportHeight = 110f;
@@ -69,6 +80,7 @@ public sealed class TrayPopupForm : Form
     private int _hoveredId = -1;
     private int _pressedId = -1;
     private int _nextHitId;
+    private int _lastPaintedSnapshotHash;
     private IntPtr _mouseHookHandle = IntPtr.Zero;
     private LowLevelMouseProc? _mouseHookProc;
     private bool _closingFromHook;
@@ -92,7 +104,10 @@ public sealed class TrayPopupForm : Form
         Action toggleKeepAwake,
         Action<TokenAccount> refreshAccount,
         Action<TokenAccount> deleteAccount,
-        Action exit)
+        Action exit,
+        Action<int>? startAwayMode = null,
+        Action<int>? setAwayModeDelaySeconds = null,
+        int awayModeDelaySeconds = 5)
     {
         _accounts = accounts;
         _activeAccountId = activeAccountId;
@@ -112,6 +127,9 @@ public sealed class TrayPopupForm : Form
         _refreshAccount = refreshAccount;
         _deleteAccount = deleteAccount;
         _exit = exit;
+        _startAwayMode = startAwayMode ?? (_ => { });
+        _setAwayModeDelaySeconds = setAwayModeDelaySeconds ?? (_ => { });
+        _awayModeDelaySeconds = IsSupportedAwayDelay(awayModeDelaySeconds) ? awayModeDelaySeconds : 5;
 
         Text = "WinCodexBar";
         AutoScaleMode = AutoScaleMode.None;
@@ -133,7 +151,6 @@ public sealed class TrayPopupForm : Form
         _ = Handle;
         FitPopup();
         Show();
-        FitPopup();
         Activate();
         InstallMouseHook();
     }
@@ -141,13 +158,22 @@ public sealed class TrayPopupForm : Form
     private void FitPopup()
     {
         var area = Screen.FromPoint(_anchor).WorkingArea;
-        _scale = Math.Min(AppAppearance.ScaleFor(this), Math.Min((area.Width - 16) / PopupLogicalWidth, (area.Height - 16) / 386f));
-        _scale = Math.Max(0.1f, _scale);
+        var nextScale = Math.Min(AppAppearance.ScaleFor(this), Math.Min((area.Width - 16) / PopupLogicalWidth, (area.Height - 16) / PopupMinimumLogicalHeight));
+        nextScale = Math.Max(0.1f, nextScale);
+        var scaleChanged = Math.Abs(_scale - nextScale) > 0.001f;
+        _scale = nextScale;
         var natural = _accounts.Count == 0 ? 110f : Math.Clamp(_accounts.Count, 1, 4) * 68f - 8f;
-        _viewportHeight = Math.Max(1, Math.Min(natural, (area.Height - 16) / _scale - AccountListTop - 76f));
-        Size = DpiSize(PopupLogicalWidth, PopupLogicalHeight());
-        Location = new Point(Math.Clamp(_anchor.X - Width + Dpi(40), area.Left + 8, area.Right - Width - 8),
-            Math.Clamp(_anchor.Y - Height - 8, area.Top + 8, area.Bottom - Height - 8));
+        var nextViewportHeight = Math.Max(1, Math.Min(natural, (area.Height - 16) / _scale - AccountListTop - ActionsFooterHeight));
+        var viewportChanged = Math.Abs(_viewportHeight - nextViewportHeight) > 0.01f;
+        _viewportHeight = nextViewportHeight;
+        var nextSize = DpiSize(PopupLogicalWidth, PopupLogicalHeight());
+        var nextLocation = new Point(Math.Clamp(_anchor.X - nextSize.Width + Dpi(40), area.Left + 8, area.Right - nextSize.Width - 8),
+            Math.Clamp(_anchor.Y - nextSize.Height - 8, area.Top + 8, area.Bottom - nextSize.Height - 8));
+        var sizeChanged = Size != nextSize;
+        var locationChanged = Location != nextLocation;
+        if (sizeChanged) Size = nextSize;
+        if (locationChanged) Location = nextLocation;
+        if (!scaleChanged && !viewportChanged && !sizeChanged && !locationChanged) return;
         _hits.Clear();
         _pressedId = -1;
         Invalidate();
@@ -171,6 +197,7 @@ public sealed class TrayPopupForm : Form
         CodexBarConfig config,
         IReadOnlyList<TokenAccount>? accounts = null)
     {
+        var previousCount = _accounts.Count;
         if (accounts is not null)
         {
             _accounts = accounts;
@@ -181,17 +208,29 @@ public sealed class TrayPopupForm : Form
             _tokenSummary = tokenSummary.Value;
         }
         _config = config ?? new CodexBarConfig();
+        if (IsSupportedAwayDelay(_config.AwayModeDelaySeconds))
+        {
+            _awayModeDelaySeconds = _config.AwayModeDelaySeconds;
+        }
         if (_refreshingAccountId is not null)
         {
             _refreshStopRequested = true;
         }
-        FitPopup();
+        if (_accounts.Count != previousCount)
+        {
+            FitPopup();
+        }
+        else if (_lastPaintedSnapshotHash != BuildSnapshotHash())
+        {
+            Invalidate();
+        }
     }
 
     public void UpdateRadarPrediction(CodexRadarPrediction prediction)
     {
+        if (Equals(_radarPrediction, prediction)) return;
         _radarPrediction = prediction;
-        Invalidate();
+        Invalidate(Rectangle.Ceiling(Rect(20, 79, 400, 18)));
     }
 
     protected override void Dispose(bool disposing)
@@ -204,12 +243,6 @@ public sealed class TrayPopupForm : Form
         }
 
         base.Dispose(disposing);
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        MicaSupport.TryApply(this, transient: true);
     }
 
     protected override void OnResize(EventArgs e)
@@ -230,7 +263,7 @@ public sealed class TrayPopupForm : Form
         if (e.Button != MouseButtons.Left || _actionInProgress) return;
         var hit = HitAt(e.Location);
         _pressedId = hit?.Id ?? -1;
-        Invalidate();
+        InvalidateHit(_pressedId);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
@@ -240,7 +273,7 @@ public sealed class TrayPopupForm : Form
         var hit = HitAt(e.Location);
         var pressedId = _pressedId;
         _pressedId = -1;
-        Invalidate();
+        InvalidateHit(pressedId);
         if (hit is not null && hit.Id == pressedId)
         {
             _actionInProgress = true;
@@ -270,8 +303,10 @@ public sealed class TrayPopupForm : Form
         Cursor = hit is not null ? Cursors.Hand : Cursors.Default;
         if (newId != _hoveredId)
         {
+            var previousId = _hoveredId;
             _hoveredId = newId;
-            Invalidate();
+            InvalidateHit(previousId);
+            InvalidateHit(newId);
         }
 
         var tooltip = hit?.Tooltip;
@@ -296,9 +331,12 @@ public sealed class TrayPopupForm : Form
         Cursor = Cursors.Default;
         if (_hoveredId != -1 || _pressedId != -1)
         {
+            var previousHovered = _hoveredId;
+            var previousPressed = _pressedId;
             _hoveredId = -1;
             _pressedId = -1;
-            Invalidate();
+            InvalidateHit(previousHovered);
+            InvalidateHit(previousPressed);
         }
     }
 
@@ -330,6 +368,25 @@ public sealed class TrayPopupForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
+
+        // The rotating refresh glyph is the only part that changes every animation frame.
+        // Keep its repaint local instead of rebuilding the entire tray surface and hit map.
+        if (_refreshAnimationFramePending
+            && _refreshGlyphAccount is not null
+            && _refreshGlyphHitId >= 0
+            && e.ClipRectangle.Width <= _refreshGlyphVisibleBounds.Width + Dpi(4)
+            && e.ClipRectangle.Height <= _refreshGlyphVisibleBounds.Height + Dpi(4))
+        {
+            _refreshAnimationFramePending = false;
+            var state = e.Graphics.Save();
+            e.Graphics.SetClip(_refreshGlyphVisibleBounds);
+            DrawRefreshGlyph(e.Graphics, _refreshGlyphBounds, _refreshGlyphHitId, _refreshGlyphAccount);
+            e.Graphics.Restore(state);
+            return;
+        }
+        _refreshAnimationFramePending = false;
+        _refreshGlyphAccount = null;
+        _refreshGlyphHitId = -1;
         _hits.Clear();
         _nextHitId = 0;
 
@@ -343,6 +400,7 @@ public sealed class TrayPopupForm : Form
         DrawUsageOverview(g, active);
         DrawAccountSection(g);
         DrawActions(g);
+        _lastPaintedSnapshotHash = BuildSnapshotHash();
     }
 
     private void DrawShell(Graphics g)
@@ -477,7 +535,10 @@ public sealed class TrayPopupForm : Form
         _toggleKeepAwake();
         _toolTip.Hide(this);
         _visibleTooltip = _isKeepAwakeEnabled() ? "解除保持唤醒" : "锁定保持唤醒";
-        Invalidate();
+        foreach (var hit in _hits.Where(hit => hit.Tooltip?.StartsWith("当前", StringComparison.Ordinal) == true))
+        {
+            Invalidate(Rectangle.Ceiling(hit.Bounds));
+        }
         var point = PointToClient(Cursor.Position);
         if (ClientRectangle.Contains(point))
         {
@@ -673,21 +734,29 @@ public sealed class TrayPopupForm : Form
 
         using var name = FontPx(12, FontStyle.Bold);
         using var meta = FontPx(10, FontStyle.Regular);
+        using var usageFont = FontPx(11.5f, FontStyle.Bold);
         using var chip = FontPx(9, FontStyle.Bold);
 
         DrawText(g, TrimMiddle(BuildAccountLabel(account), 28), name, FluentTheme.TextPrimary, Rect(54, y + 8, 220, 20));
         DrawPill(g, AccountUsageHelpers.PlanLabel(account), Rect(280, y + 9, 56, 18), PlanColor(account), Color.FromArgb(238, 238, 238), chip);
         DrawText(g, AccountUsageHelpers.HealthLabel(AccountUsageHelpers.Health(account, _config.OpenAI.WarningThresholdPercent, _config.OpenAI.DangerThresholdPercent)), meta, UsageColor(health), Rect(54, y + 30, 80, 14));
         var windows = AccountUsageHelpers.Windows(account);
-        DrawText(g, AccountUsageHelpers.UsageText(account, _config.OpenAI.UsageDisplayMode), meta, UsageColor(health), Rect(140, y + 30, 196, 14));
-        DrawText(g, "重置：" + ResetDetail(windows.FirstOrDefault()?.ResetAt), meta, FluentTheme.TextTertiary, Rect(54, y + 44, 282, 14));
+        DrawText(g, AccountUsageHelpers.UsageText(account, _config.OpenAI.UsageDisplayMode), usageFont, UsageColor(health), Rect(140, y + 29, 196, 16));
+        DrawText(g, "重置：" + ResetDetail(windows.FirstOrDefault()?.ResetAt), meta, FluentTheme.TextTertiary, Rect(142, y + 44, 194, 14), right: true);
 
         var refresh = Rect(342, y + 14, 26, 30);
         var refreshId = AddHit(refresh, () => { StartRefreshAnimation(account); _refreshAccount(account); }, "刷新此账号用量", HitStyle.RefreshGlyph);
+        if (string.Equals(_refreshingAccountId, account.AccountId, StringComparison.Ordinal))
+        {
+            _refreshGlyphBounds = refresh;
+            _refreshGlyphVisibleBounds = _hitClip is { } clip ? RectangleF.Intersect(refresh, clip) : refresh;
+            _refreshGlyphHitId = refreshId;
+            _refreshGlyphAccount = account;
+        }
         DrawRefreshGlyph(g, refresh, refreshId, account);
 
         var delete = Rect(374, y + 14, 26, 30);
-        var deleteId = AddHit(delete, () => { _deleteAccount(account); }, "删除此账号", HitStyle.DeleteGlyph);
+        var deleteId = AddHit(delete, () => { _deleteAccount(account); }, "删除此账号", HitStyle.DeleteGlyph, closeAfter: true);
         DrawDeleteGlyph(g, delete, deleteId);
     }
 
@@ -734,7 +803,6 @@ public sealed class TrayPopupForm : Form
 
     private void AdvanceRefreshAnimation()
     {
-        _refreshRotation = (_refreshRotation + 18f) % 360f;
         var elapsed = DateTime.UtcNow - _refreshAnimationStartedAt;
         if ((_refreshStopRequested && elapsed.TotalMilliseconds >= 700) || elapsed.TotalSeconds >= 15)
         {
@@ -742,9 +810,18 @@ public sealed class TrayPopupForm : Form
             _refreshingAccountId = null;
             _refreshStopRequested = false;
             _refreshRotation = 0;
+            _refreshAnimationFramePending = false;
+            _refreshGlyphAccount = null;
+            Invalidate();
+            return;
         }
 
-        Invalidate();
+        _refreshRotation = (float)(elapsed.TotalMilliseconds * 0.36 % 360);
+        if (_refreshGlyphAccount is not null && _refreshGlyphHitId >= 0 && !_refreshGlyphVisibleBounds.IsEmpty)
+        {
+            _refreshAnimationFramePending = true;
+            Invalidate(Rectangle.Ceiling(_refreshGlyphVisibleBounds));
+        }
     }
 
     private void DrawDeleteGlyph(Graphics g, RectangleF rect, int hitId)
@@ -768,33 +845,64 @@ public sealed class TrayPopupForm : Form
     private void DrawActions(Graphics g)
     {
         var separatorY = ActionsSeparatorY();
-        var buttonY = ActionsButtonY();
         using var sep = new Pen(FluentTheme.StrokeDefault, Dpi(1));
         g.DrawLine(sep, DpiF(16), DpiF(separatorY), DpiF(424), DpiF(separatorY));
 
-        using var small = FontPx(11, FontStyle.Regular);
-        DrawText(g, RefreshHint(_accounts.Select(a => a.LastChecked).Where(t => t.HasValue).Select(t => t!.Value).DefaultIfEmpty().Max()), small, FluentTheme.TextTertiary, Rect(20, buttonY + 2, 130, 24));
-
+        var buttonY = ActionsButtonY();
         var keepAwake = _isKeepAwakeEnabled();
-        DrawIconButton(g, FluentIcons.Chart, "会话分析", Rect(126, buttonY, 32, 32), _showUsage, closeAfter: true);
-        DrawIconButton(g, keepAwake ? FluentIcons.Unlock : FluentIcons.Lock, keepAwake ? "解除保持唤醒" : "锁定保持唤醒", Rect(164, buttonY, 32, 32), ToggleKeepAwakeInPlace);
-        DrawIconButton(g, FluentIcons.Home, "打开主页", Rect(202, buttonY, 32, 32), _openDashboard, closeAfter: true);
-        DrawIconButton(g, FluentIcons.Add, "添加账号", Rect(240, buttonY, 32, 32), _addAccount, closeAfter: true);
-        DrawIconButton(g, FluentIcons.Import, "导入账号文件", Rect(278, buttonY, 32, 32), _importAccounts, closeAfter: true);
-        DrawIconButton(g, FluentIcons.Export, "导出账号", Rect(316, buttonY, 32, 32), _exportAccounts, closeAfter: true);
-        DrawIconButton(g, FluentIcons.Settings, "设置", Rect(354, buttonY, 32, 32), _openConfig, closeAfter: true);
-        DrawIconButton(g, FluentIcons.SignOut, "退出", Rect(392, buttonY, 32, 32), _exit, closeAfter: true);
+        DrawLabeledActionButton(g, FluentIcons.Chart, "会话分析", "查看 Token 会话分析", Rect(20, buttonY, 100, 30), _showUsage, closeAfter: true);
+        DrawLabeledActionButton(g, keepAwake ? FluentIcons.Unlock : FluentIcons.Lock,
+            keepAwake ? "关闭保持唤醒" : "开启保持唤醒",
+            keepAwake ? "当前已保持唤醒；点击关闭" : "当前未保持唤醒；点击开启",
+            Rect(128, buttonY, 134, 30), ToggleKeepAwakeInPlace, positive: keepAwake);
+        DrawLabeledActionButton(g, FluentIcons.EyeHide, "黑屏离开",
+            $"黑屏离开；{_awayModeDelaySeconds} 秒后开始；倒计时按 Esc 取消",
+            Rect(270, buttonY, 140, 30), () => _startAwayMode(_awayModeDelaySeconds), primary: true, closeAfter: true);
+
+        var delayY = ActionsDelayY();
+        using (var labelFont = FontPx(10, FontStyle.Bold))
+        {
+            DrawText(g, "黑屏前等待", labelFont, FluentTheme.TextSecondary, Rect(20, delayY, 72, 26));
+        }
+        DrawAwayDelayOption(g, 5, Rect(96, delayY + 1, 44, 24));
+        DrawAwayDelayOption(g, 15, Rect(146, delayY + 1, 44, 24));
+        DrawAwayDelayOption(g, 30, Rect(196, delayY + 1, 44, 24));
+        var lastChecked = _accounts.Select(a => a.LastChecked).Where(t => t.HasValue).Select(t => t!.Value).DefaultIfEmpty().Max();
+        using (var hintFont = FontPx(10, FontStyle.Regular))
+        {
+            DrawText(g, $"Esc 取消 · {RefreshHint(lastChecked)}", hintFont, FluentTheme.TextTertiary, Rect(250, delayY, 160, 26));
+        }
+
+        var secondaryY = ActionsSecondaryY();
+        DrawLabeledActionButton(g, FluentIcons.Home, "主页", "打开主页", Rect(20, secondaryY, 60, 28), _openDashboard, compact: true, closeAfter: true);
+        DrawLabeledActionButton(g, FluentIcons.Add, "添加", "添加 OpenAI 账号", Rect(86, secondaryY, 60, 28), _addAccount, compact: true, closeAfter: true);
+        DrawLabeledActionButton(g, FluentIcons.Import, "导入", "导入账号文件", Rect(152, secondaryY, 60, 28), _importAccounts, compact: true, closeAfter: true);
+        DrawLabeledActionButton(g, FluentIcons.Export, "导出", "导出账号", Rect(218, secondaryY, 60, 28), _exportAccounts, compact: true, closeAfter: true);
+        DrawLabeledActionButton(g, FluentIcons.Settings, "设置", "设置", Rect(284, secondaryY, 60, 28), _openConfig, compact: true, closeAfter: true);
+        DrawLabeledActionButton(g, FluentIcons.SignOut, "退出", "退出 WinCodexBar", Rect(350, secondaryY, 60, 28), _exit, compact: true, closeAfter: true);
     }
 
-    private void DrawIconButton(Graphics g, string icon, string tooltip, RectangleF rect, Action action, bool closeAfter = false)
+    private void DrawLabeledActionButton(
+        Graphics g,
+        string icon,
+        string label,
+        string tooltip,
+        RectangleF rect,
+        Action action,
+        bool primary = false,
+        bool positive = false,
+        bool compact = false,
+        bool closeAfter = false)
     {
-        var hitId = AddHit(rect, action, tooltip, HitStyle.IconButton, closeAfter: closeAfter);
+        var hitId = AddHit(rect, action, tooltip, primary ? HitStyle.AccentButton : HitStyle.NeutralButton, closeAfter: closeAfter);
         var hovered = _hoveredId == hitId;
         var pressed = _pressedId == hitId;
-        Color bg;
-        if (pressed) bg = FluentTheme.ControlBackgroundPressed;
-        else if (hovered) bg = FluentTheme.ControlBackgroundHover;
-        else bg = FluentTheme.ControlBackground;
+        var bg = primary
+            ? pressed ? FluentTheme.AccentPressed : hovered ? FluentTheme.AccentHover : FluentTheme.Accent
+            : positive
+                ? pressed ? Color.FromArgb(211, 235, 217) : hovered ? Color.FromArgb(222, 241, 225) : Color.FromArgb(232, 246, 234)
+                : pressed ? FluentTheme.ControlBackgroundPressed : hovered ? FluentTheme.ControlBackgroundHover : FluentTheme.ControlBackground;
+        var fore = primary ? Color.White : positive ? FluentTheme.Success : FluentTheme.TextPrimary;
         using (var brush = new SolidBrush(bg))
         {
             FillRound(g, brush, rect, DpiF(4));
@@ -803,8 +911,114 @@ public sealed class TrayPopupForm : Form
         {
             DrawRound(g, pen, rect, DpiF(4));
         }
-        using var font = FluentTheme.IconFontPx(DpiF(15));
-        DrawText(g, icon, font, FluentTheme.TextPrimary, rect, center: true);
+
+        var padding = DpiF(compact ? 4f : 7f);
+        var iconWidth = DpiF(compact ? 12f : 15f);
+        var iconGap = DpiF(3f);
+        using var iconFont = FluentTheme.IconFontPx(DpiF(compact ? 11f : 13f));
+        using var labelFont = FontPx(compact ? 10f : 10.5f, FontStyle.Bold);
+        var measuredLabel = TextRenderer.MeasureText(label, labelFont,
+            new Size(1000, Math.Max(1, (int)rect.Height)),
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+        var availableWidth = Math.Max(1, rect.Width - padding * 2);
+        var textWidth = Math.Max(1, Math.Min(measuredLabel.Width, availableWidth - iconWidth - iconGap));
+        var iconLeft = rect.Left + padding;
+        var iconRect = new RectangleF(iconLeft, rect.Top + DpiF(1), iconWidth, rect.Height - DpiF(2));
+        var textRect = new RectangleF(iconLeft + iconWidth + iconGap, rect.Top + DpiF(1), textWidth, rect.Height - DpiF(2));
+        DrawCenteredGlyph(g, icon, iconFont, fore, iconRect);
+        DrawText(g, label, labelFont, fore, textRect);
+    }
+
+    private static void DrawCenteredGlyph(Graphics graphics, string glyph, Font font, Color color, RectangleF bounds)
+    {
+        using var path = new GraphicsPath();
+        using var format = (StringFormat)StringFormat.GenericTypographic.Clone();
+        path.AddString(glyph, font.FontFamily, (int)font.Style, font.Size, PointF.Empty, format);
+        var glyphBounds = path.GetBounds();
+        if (glyphBounds.Width <= 0 || glyphBounds.Height <= 0) return;
+
+        var scale = Math.Min(bounds.Width * 0.78f / glyphBounds.Width, bounds.Height * 0.72f / glyphBounds.Height);
+        var matrix = new Matrix();
+        matrix.Translate(-glyphBounds.Left, -glyphBounds.Top);
+        matrix.Scale(scale, scale, MatrixOrder.Append);
+        matrix.Translate(bounds.Left + (bounds.Width - glyphBounds.Width * scale) / 2f,
+            bounds.Top + (bounds.Height - glyphBounds.Height * scale) / 2f, MatrixOrder.Append);
+        path.Transform(matrix);
+        matrix.Dispose();
+        using var brush = new SolidBrush(color);
+        graphics.FillPath(brush, path);
+    }
+
+    private void DrawAwayDelayOption(Graphics g, int seconds, RectangleF rect)
+    {
+        var selected = _awayModeDelaySeconds == seconds;
+        var hitId = AddHit(rect, () => SetAwayModeDelay(seconds),
+            $"黑屏前等待 {seconds} 秒", HitStyle.SegmentTab);
+        var hovered = _hoveredId == hitId;
+        var pressed = _pressedId == hitId;
+        var bg = selected
+            ? pressed ? FluentTheme.AccentPressed : hovered ? FluentTheme.AccentHover : FluentTheme.Accent
+            : pressed ? FluentTheme.ControlBackgroundPressed : hovered ? FluentTheme.ControlBackgroundHover : FluentTheme.ControlBackground;
+        using (var brush = new SolidBrush(bg)) FillRound(g, brush, rect, DpiF(4));
+        using (var pen = new Pen(selected ? FluentTheme.Accent : FluentTheme.StrokeDefault, Dpi(1))) DrawRound(g, pen, rect, DpiF(4));
+        using var font = FontPx(10, FontStyle.Bold);
+        DrawText(g, $"{seconds} 秒", font, selected ? Color.White : FluentTheme.TextPrimary, rect, center: true);
+    }
+
+    private void SetAwayModeDelay(int seconds)
+    {
+        if (!IsSupportedAwayDelay(seconds) || _awayModeDelaySeconds == seconds) return;
+        _awayModeDelaySeconds = seconds;
+        _config.AwayModeDelaySeconds = seconds;
+        _setAwayModeDelaySeconds(seconds);
+        _toolTip.Hide(this);
+        foreach (var hit in _hits.Where(hit => hit.Tooltip?.StartsWith("黑屏离开；", StringComparison.Ordinal) == true
+                                               || hit.Tooltip?.StartsWith("黑屏前等待 ", StringComparison.Ordinal) == true))
+        {
+            Invalidate(Rectangle.Ceiling(hit.Bounds));
+        }
+    }
+
+    private static bool IsSupportedAwayDelay(int seconds) => seconds is 5 or 15 or 30;
+
+    private void InvalidateHit(int id)
+    {
+        if (id < 0) return;
+        var hit = _hits.FirstOrDefault(item => item.Id == id);
+        if (hit is not null) Invalidate(Rectangle.Ceiling(hit.Bounds));
+    }
+
+    private int BuildSnapshotHash()
+    {
+        var hash = new HashCode();
+        hash.Add(_activeAccountId, StringComparer.Ordinal);
+        hash.Add(_config.OpenAI.UsageDisplayMode);
+        hash.Add(_config.OpenAI.TokenUnitDisplayMode);
+        hash.Add(_config.OpenAI.AccountUsageMode);
+        hash.Add(_config.OpenAI.WarningThresholdPercent);
+        hash.Add(_config.OpenAI.DangerThresholdPercent);
+        hash.Add(_awayModeDelaySeconds);
+        hash.Add(_isKeepAwakeEnabled());
+        hash.Add(_radarPrediction.DisplayText, StringComparer.Ordinal);
+        hash.Add(_tokenSummary.TodayTokens);
+        hash.Add(_tokenSummary.ThisWeekTokens);
+        hash.Add(_tokenSummary.ThisMonthTokens);
+        foreach (var account in SortedAccounts())
+        {
+            hash.Add(account.AccountId, StringComparer.Ordinal);
+            hash.Add(BuildAccountLabel(account), StringComparer.Ordinal);
+            hash.Add(AccountUsageHelpers.PlanLabel(account), StringComparer.Ordinal);
+            hash.Add(AccountUsageHelpers.UsageText(account, _config.OpenAI.UsageDisplayMode), StringComparer.Ordinal);
+            hash.Add(AccountUsageHelpers.HealthLabel(AccountUsageHelpers.Health(account, _config.OpenAI.WarningThresholdPercent, _config.OpenAI.DangerThresholdPercent)), StringComparer.Ordinal);
+            hash.Add(AccountUsageHelpers.CreditSummary(account), StringComparer.Ordinal);
+            hash.Add(account.LastChecked);
+            foreach (var window in AccountUsageHelpers.Windows(account))
+            {
+                hash.Add(window.Label, StringComparer.Ordinal);
+                hash.Add(ResetDetail(window.ResetAt), StringComparer.Ordinal);
+            }
+        }
+        return hash.ToHashCode();
     }
 
     private void DrawAccentButton(Graphics g, RectangleF rect, string label, int hitId)
@@ -841,7 +1055,7 @@ public sealed class TrayPopupForm : Form
 
     private float PopupLogicalHeight()
     {
-        return AccountListTop + AccountViewportHeight() + 76f;
+        return AccountListTop + AccountViewportHeight() + ActionsFooterHeight;
     }
 
     private float AccountViewportHeight() => _viewportHeight;
@@ -853,8 +1067,12 @@ public sealed class TrayPopupForm : Form
 
     private float ActionsButtonY()
     {
-        return ActionsSeparatorY() + 16f;
+        return ActionsSeparatorY() + 7f;
     }
+
+    private float ActionsDelayY() => ActionsButtonY() + 36f;
+
+    private float ActionsSecondaryY() => ActionsButtonY() + 70f;
 
     private IEnumerable<TokenAccount> SortedAccounts()
     {
@@ -993,7 +1211,7 @@ public sealed class TrayPopupForm : Form
 
     private Font FontPx(float size, FontStyle style)
     {
-        return FluentTheme.TextFontPx(DpiF(size), style);
+        return FluentTheme.TextFontPx(DpiF(size * PopupFontScale), style);
     }
 
     private int Dpi(float value) => (int)Math.Round(value * _scale);

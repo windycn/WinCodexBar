@@ -2,10 +2,11 @@ name: Windows 构建与回归
 on:
   push:
     branches: [main, fix/windows-0.2]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 发布已验证的 0.2.0 正式包
+        description: 发布已验证的正式包
         type: boolean
         default: false
 permissions:
@@ -14,11 +15,20 @@ jobs:
   verify:
     runs-on: windows-latest
     timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: 读取项目版本
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content windows/CodexBarWin/CodexBarWin.csproj -Raw
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: 核心回归
         run: dotnet run --project tests/WinCodexBar.CoreTests -c Release
       - name: Windows 窗口回归
@@ -32,7 +42,7 @@ jobs:
           }
       - name: 打包与校验清单
         shell: pwsh
-        run: ./tools/Package-Windows.ps1
+        run: ./tools/Package-Windows.ps1 -Version '${{ steps.version.outputs.version }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -42,7 +52,7 @@ jobs:
             tests/WinCodexBar.WindowsTests/bin/Release/net8.0-windows/screenshots/
 
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main')
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -56,11 +66,12 @@ jobs:
       - name: 发布正式版
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create v0.2.0
-          release-files/artifacts/packages/*.zip
-          release-files/artifacts/packages/SHA256SUMS.txt
-          --target "$GITHUB_SHA"
-          --title "WinCodexBar 0.2.0 · Fluent 界面与自动更新"
-          --notes-file tools/Release-Notes-0.2.0.md
-          --latest
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            release-files/artifacts/packages/*.zip \
+            release-files/artifacts/packages/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "WinCodexBar $VERSION · 流畅界面与离开模式" \
+            --notes-file "tools/Release-Notes-$VERSION.md" \
+            --latest
