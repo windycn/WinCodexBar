@@ -988,6 +988,14 @@ public sealed class TrayPopupForm : Form
 
     private static void DrawText(Graphics g, string text, Font font, Color color, RectangleF rect, bool center = false, bool right = false)
     {
+        if (font.FontFamily.Name == EmbeddedFonts.Text.Name)
+        {
+            var alignment = center ? TextFormatFlags.HorizontalCenter : right ? TextFormatFlags.Right : TextFormatFlags.Left;
+            TextRenderer.DrawText(g, text, font, Rectangle.Round(rect), color,
+                alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix
+                | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.PreserveGraphicsClipping);
+            return;
+        }
         using var brush = new SolidBrush(color);
         using var format = new StringFormat
         {

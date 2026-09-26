@@ -99,7 +99,7 @@ internal static class Program
         probe.Save(Path.Combine(AppContext.BaseDirectory, "screenshots", "font-probe.png"));
         var dc = g.GetHdc(); var handle = large.ToHfont(); var old = SelectObject(dc, handle);
         var name = new System.Text.StringBuilder(128); GetTextFace(dc, name.Capacity, name);
-        Console.WriteLine("GDI actual font: " + name);
+        Check(name.ToString() == "WinCodexBar Sans", "Windows selects bundled sans font");
         SelectObject(dc, old); DeleteObject(handle); g.ReleaseHdc(dc);
     }
     [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
