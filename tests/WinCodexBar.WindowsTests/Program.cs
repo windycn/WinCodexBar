@@ -26,6 +26,7 @@ internal static class Program
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
         var home = Path.Combine(Path.GetTempPath(), "WinCodexBar UI ' " + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("CODEXBAR_HOME", home);
         Directory.CreateDirectory(home);
@@ -87,12 +88,14 @@ internal static class Program
     }
     private static void ProbeFont(Font font)
     {
-        using var probe = new Bitmap(700, 160);
+        using var probe = new Bitmap(700, 220);
         using var g = Graphics.FromImage(probe);
         g.Clear(Color.White);
         using var large = new Font(font.FontFamily, 28, FontStyle.Regular, GraphicsUnit.Pixel);
         g.DrawString("账号设置 Codex 123 (GDI+)", large, Brushes.Black, 10, 10);
         TextRenderer.DrawText(g, "账号设置 Codex 123 (GDI)", large, new Point(10, 65), Color.Black);
+        using var named = new Font(font.Name, 28, FontStyle.Regular, GraphicsUnit.Pixel);
+        g.DrawString("账号设置 Codex 123 (named GDI+)", named, Brushes.Black, 10, 120);
         probe.Save(Path.Combine(AppContext.BaseDirectory, "screenshots", "font-probe.png"));
         var dc = g.GetHdc(); var handle = large.ToHfont(); var old = SelectObject(dc, handle);
         var name = new System.Text.StringBuilder(128); GetTextFace(dc, name.Capacity, name);

@@ -9,8 +9,13 @@ internal static class EmbeddedFonts
     private static readonly PrivateFontCollection Collection = new();
     private static readonly List<IntPtr> Buffers = new();
     public static readonly FontFamily Icons = Load("FluentSystemIcons-Regular.ttf");
-    public static readonly FontFamily Text = Load("NotoSansSC-Regular.ttf");
-    private static readonly FontFamily Bold = Load("NotoSansSC-Bold.ttf");
+    public static readonly FontFamily Text;
+    static EmbeddedFonts()
+    {
+        Load("NotoSansSC-Regular.ttf");
+        Load("NotoSansSC-Bold.ttf");
+        Text = Collection.Families.First(f => f.Name == "WinCodexBar Sans");
+    }
 
     private static FontFamily Load(string filename)
     {

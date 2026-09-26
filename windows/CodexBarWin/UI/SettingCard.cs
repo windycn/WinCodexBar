@@ -73,6 +73,7 @@ public sealed class SettingCard : Panel
                     foreach (Control child in control.Controls) Remember(child);
                 }
                 Remember(_action);
+                _action.Dock = DockStyle.None;
                 _action.Anchor = AnchorStyles.Top | AnchorStyles.Left;
                 Controls.Add(_action);
                 LayoutAction();
