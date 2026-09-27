@@ -1,9 +1,13 @@
 param([string]$Version = '1.0.0', [string]$PublishRoot = 'artifacts', [string]$OutputRoot = 'artifacts/packages', [string[]]$Architectures = @('win-x64', 'win-x86', 'win-arm64'))
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
+$buildId = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $buildId -notmatch '^[a-fA-F0-9]{40}$') { throw '无法确定发布构建标识' }
+$buildId | Set-Content -LiteralPath (Join-Path $OutputRoot 'BUILD_ID.txt') -Encoding ascii
 $checksums = @()
 foreach ($rid in $Architectures) {
     $source = Join-Path $PublishRoot $rid
+    $buildId | Set-Content -LiteralPath (Join-Path $source 'BUILD_ID.txt') -Encoding ascii
     foreach ($required in @('WinCodexBar.exe', 'WinCodexBar.Next.exe', 'WindowsAppRuntimeInstall.exe')) {
         if (!(Test-Path (Join-Path $source $required))) { throw "缺少 $rid $required" }
     }

@@ -88,8 +88,10 @@ jobs:
           else
             release_flags+=(--latest)
           fi
-          gh release create "v$VERSION" \
-            release-files/*.zip \
-            release-files/SHA256SUMS.txt \
-            --notes-file "tools/Release-Notes-$VERSION.md" \
-            "${release_flags[@]}"
+          assets=(release-files/*.zip release-files/SHA256SUMS.txt release-files/BUILD_ID.txt)
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" "${assets[@]}" --clobber
+            gh release edit "v$VERSION" --notes-file "tools/Release-Notes-$VERSION.md" "${release_flags[@]}"
+          else
+            gh release create "v$VERSION" "${assets[@]}" --notes-file "tools/Release-Notes-$VERSION.md" "${release_flags[@]}"
+          fi

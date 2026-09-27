@@ -44,7 +44,7 @@ public sealed class AppState : IDisposable
     }
 
     public TokenAccount? ActiveAccount => Registry.Accounts.FirstOrDefault(a => a.AccountId == Registry.ActiveAccountId);
-    public bool KeepAwakeEnabled => _keepAwake.IsEnabled || _keepAwake.IsAdvancedEnabled;
+    public bool KeepAwakeEnabled => _keepAwake.IsEnabled || _keepAwake.IsAdvancedEnabled || _keepAwake.IsBlackScreenActive;
 
     public void NotifyChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
@@ -176,7 +176,12 @@ public sealed class AppState : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void SetDisplayOffRequested(bool requested) => _keepAwake.SetDisplayOffRequested(requested);
+    public void SetBlackScreenActive(bool active)
+    {
+        _keepAwake.SetBlackScreenActive(active);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+    public bool IsDisplayHoldActive => _keepAwake.IsDisplayHoldActive;
 
     public void SetTrayStyle(string style)
     {

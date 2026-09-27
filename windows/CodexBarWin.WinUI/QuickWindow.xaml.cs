@@ -219,7 +219,11 @@ public sealed partial class QuickWindow : Window
         finally { _confirmingDelete = false; }
     }
     private void KeepAwakeClicked(object sender, RoutedEventArgs e) => _state.SetKeepAwake(!_state.KeepAwakeEnabled);
-    private void AwayClicked(object sender, RoutedEventArgs e) { Hide(); _main.StartAwayMode(); }
+    private void AwayClicked(object sender, RoutedEventArgs e)
+    {
+        Hide();
+        _main.StartAwayMode();
+    }
     private async void RefreshClicked(object sender, RoutedEventArgs e) =>
         await RunWithRefreshAnimationAsync(() => _state.RefreshNowAsync());
     private async Task RunWithRefreshAnimationAsync(Func<Task> refresh)

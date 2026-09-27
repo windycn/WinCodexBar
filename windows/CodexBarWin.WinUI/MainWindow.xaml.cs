@@ -29,12 +29,13 @@ public sealed partial class MainWindow : Window
 
     public ObservableCollection<AccountViewModel> Accounts { get; } = new();
     public AppState State => _state;
+    public bool IsAwayModeActive => _awayMode.IsActive;
 
     public MainWindow(AppState state)
     {
         _state = state;
-        _awayMode.DisplayOffStarted += (_, _) => _state.SetDisplayOffRequested(true);
-        _awayMode.Woke += (_, _) => _state.SetDisplayOffRequested(false);
+        _awayMode.BlackScreenStarted += (_, _) => _state.SetBlackScreenActive(true);
+        _awayMode.Woke += (_, _) => _state.SetBlackScreenActive(false);
         _awayMode.Failed += (_, message) => _state.ReportBackgroundError("黑屏离开失败：" + message);
         _updatingSettings = true;
         InitializeComponent();

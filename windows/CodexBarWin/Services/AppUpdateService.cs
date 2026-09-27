@@ -47,7 +47,25 @@ public sealed class AppUpdateService
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
             return await CheckReleasePageAsync(timeout.Token);
         response.EnsureSuccessStatusCode();
-        return ParseRelease(await response.Content.ReadAsStringAsync(timeout.Token), CurrentVersion, ArchitectureName);
+        var json = await response.Content.ReadAsStringAsync(timeout.Token);
+        var newer = ParseRelease(json, CurrentVersion, ArchitectureName);
+        if (newer is not null) return newer;
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        if (root.GetProperty("draft").GetBoolean() || root.GetProperty("prerelease").GetBoolean()) return null;
+        var tag = root.GetProperty("tag_name").GetString() ?? "";
+        if (!Version.TryParse(tag.TrimStart('v'), out var releaseVersion) ||
+            releaseVersion != new Version(CurrentVersion.Major, CurrentVersion.Minor, Math.Max(0, CurrentVersion.Build))) return null;
+        var markerName = "BUILD_ID.txt";
+        var expected = $"{ReleasesUrl}/download/{tag}/{markerName}";
+        var marker = root.GetProperty("assets").EnumerateArray().FirstOrDefault(asset =>
+            asset.GetProperty("name").GetString() == markerName);
+        if (marker.ValueKind == JsonValueKind.Undefined) return null;
+        if (marker.GetProperty("browser_download_url").GetString() != expected)
+            throw new InvalidDataException("更新构建标识不属于本项目发布。");
+        var remoteId = await Client.GetStringAsync(expected, timeout.Token);
+        return IsNewBuild(remoteId, ReadLocalBuildId())
+            ? ParseRelease(json, new Version(0, 0, 0), ArchitectureName) : null;
     }
 
     // GitHub's unauthenticated API can return 403 on a shared network. Its public latest-release
@@ -56,8 +74,20 @@ public sealed class AppUpdateService
     {
         using var response = await Client.GetAsync(ReleasesUrl + "/latest", cancellationToken);
         response.EnsureSuccessStatusCode();
-        var update = ParseLatestReleaseUri(response.RequestMessage?.RequestUri, CurrentVersion, ArchitectureName);
-        if (update is null) return null;
+        var latest = ParseLatestReleaseUri(response.RequestMessage?.RequestUri, new Version(0, 0, 0), ArchitectureName);
+        if (latest is null) return null;
+        var current = new Version(CurrentVersion.Major, CurrentVersion.Minor, Math.Max(0, CurrentVersion.Build));
+        if (latest.Version < current) return null;
+        if (latest.Version == current)
+        {
+            try
+            {
+                var marker = await Client.GetStringAsync($"{ReleasesUrl}/download/{latest.Tag}/BUILD_ID.txt", cancellationToken);
+                if (!IsNewBuild(marker, ReadLocalBuildId())) return null;
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound) { return null; }
+        }
+        var update = latest;
         using var checksum = await Client.SendAsync(new HttpRequestMessage(HttpMethod.Head, update.Checksums), cancellationToken);
         using var package = await Client.SendAsync(new HttpRequestMessage(HttpMethod.Head, update.Download), cancellationToken);
         if (!checksum.IsSuccessStatusCode || !package.IsSuccessStatusCode)
@@ -72,6 +102,19 @@ public sealed class AppUpdateService
         }
         catch (HttpRequestException) { /* A missing optional delta leaves the verified full package. */ }
         return update;
+    }
+
+    public static bool IsNewBuild(string remoteId, string? localId)
+    {
+        var remote = remoteId.Trim();
+        return Regex.IsMatch(remote, "^[a-fA-F0-9]{40}$") &&
+            !remote.Equals(localId?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadLocalBuildId()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "BUILD_ID.txt");
+        return File.Exists(path) ? File.ReadAllText(path) : null;
     }
 
     public static AppUpdate? ParseLatestReleaseUri(Uri? uri, Version current, string architecture)

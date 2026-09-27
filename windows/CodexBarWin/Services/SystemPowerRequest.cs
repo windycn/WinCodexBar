@@ -5,12 +5,14 @@ namespace CodexBarWin.Services;
 /// <summary>A process-scoped power request; unlike SetThreadExecutionState it survives async thread hops.</summary>
 internal sealed class SystemPowerRequest : IDisposable
 {
-    private const int SystemRequired = 0;
-    private const int DisplayRequired = 1;
+    // POWER_REQUEST_TYPE: DisplayRequired = 0, SystemRequired = 1.
+    private const int DisplayRequired = 0;
+    private const int SystemRequired = 1;
     private readonly nint _handle;
     private bool _system;
     private bool _display;
     private bool _disposed;
+    public bool IsDisplayRequired => _display;
 
     public SystemPowerRequest()
     {
@@ -33,8 +35,9 @@ internal sealed class SystemPowerRequest : IDisposable
     private void Update(int type, bool requested, ref bool current)
     {
         if (requested == current) return;
-        if (requested ? PowerSetRequest(_handle, type) : PowerClearRequest(_handle, type))
-            current = requested;
+        if (!(requested ? PowerSetRequest(_handle, type) : PowerClearRequest(_handle, type)))
+            throw new InvalidOperationException($"Windows 电源请求更新失败（类型 {type}，错误 {Marshal.GetLastWin32Error()}）。");
+        current = requested;
     }
 
     public void Dispose()

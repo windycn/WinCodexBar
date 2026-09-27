@@ -446,6 +446,7 @@
                                     <TextBlock Text="有匹配的差分包时优先下载增量；校验失败或无差分包时使用完整包。更新前备份账号与设置。" TextWrapping="Wrap" Opacity="0.7"/>
                                     <TextBlock x:Name="InstalledVersionText" FontWeight="SemiBold"/>
                                     <Button Content="检查更新" Click="CheckUpdateClicked" HorizontalAlignment="Left"/>
+                                    <HyperlinkButton Content="GitHub 项目主页" NavigateUri="https://github.com/windycn/WinCodexBar" HorizontalAlignment="Left"/>
                                     <ToggleSwitch x:Name="AdvancedAwakeToggle" Header="高级防休眠：空闲时轻微移动鼠标" Toggled="AdvancedAwakeToggle_Toggled"/>
                                     <StackPanel Orientation="Horizontal" Spacing="12">
                                         <NumberBox x:Name="AwakeIdleBox" Header="空闲阈值（秒）" Minimum="5" Maximum="3600" Width="170" ValueChanged="AdvancedAwakeNumberChanged"/>

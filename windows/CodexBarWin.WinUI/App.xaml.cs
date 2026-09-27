@@ -91,6 +91,7 @@ public partial class App : Application
     }
 
     public bool ImageStudioVisible => _imageStudio?.AppWindow.IsVisible == true;
+    public bool VectorStudioVisible => _vectorStudio?.AppWindow.IsVisible == true;
 
     private void ShowVectorStudio(string? selectedPath = null)
     {

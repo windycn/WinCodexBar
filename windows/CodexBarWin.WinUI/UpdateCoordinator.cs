@@ -47,8 +47,12 @@ internal sealed class UpdateCoordinator : IDisposable
             if (update is null || !_state.Settings.Config.SilentUpdates) return;
 
             var staged = await updater.DownloadAndVerifyAsync(update, cancellationToken);
-            // Wait for both windows to be closed so the background update never interrupts a dialog.
-            while (_main.AppWindow.IsVisible || _tray.IsQuickVisible)
+            // Never interrupt a creative task, open workspace, or black-screen session.
+            while (_main.AppWindow.IsVisible || _tray.IsQuickVisible || _main.IsAwayModeActive ||
+                   CreativeTaskQueue.Shared.IsBusy ||
+                   ((App)Microsoft.UI.Xaml.Application.Current).ImageStudioVisible ||
+                   ((App)Microsoft.UI.Xaml.Application.Current).VectorStudioVisible ||
+                   ((App)Microsoft.UI.Xaml.Application.Current).QualityCheckVisible)
                 await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
 
             if (!_state.Settings.Config.AutoCheckUpdates || !_state.Settings.Config.SilentUpdates) return;

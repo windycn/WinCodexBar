@@ -121,6 +121,9 @@ try
         Check(AppUpdateService.ParseRelease(Release("v0.3.0", arch), new Version(0,2,0,0), arch)?.AssetName.EndsWith(arch + ".zip") == true, "matching update architecture " + arch);
     Check(AppUpdateService.ParseRelease(Release("v0.2.1"), new Version(0,2,0,0), "x64")?.Version == new Version(0,2,1), "0.2.0 can update directly to 0.2.1");
     Check(AppUpdateService.ParseRelease(Release("v0.2.0"), new Version(0,2,0,0), "x64") is null, "same version not updated");
+    Check(AppUpdateService.IsNewBuild(new string('a', 40), null), "same-version release with build marker updates old installation");
+    Check(!AppUpdateService.IsNewBuild(new string('a', 40), new string('A', 40)), "matching build marker skips update");
+    Check(!AppUpdateService.IsNewBuild("invalid", null), "invalid build marker is ignored");
     Check(AppUpdateService.ParseRelease(Release("v0.3.0", preview:true), new Version(0,2,0), "x64") is null, "prerelease ignored");
     Reject(() => AppUpdateService.ParseRelease(Release("v0.3.0").Replace("https://github.com/", "https://example.test/"), new Version(0,2,0), "x64"), "foreign download rejected");
     Reject(() => AppUpdateService.ParseRelease(Release("v0.3.0"), new Version(0,2,0), "arm64"), "missing architecture rejected");

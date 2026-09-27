@@ -17,7 +17,7 @@ public sealed class KeepAwakeService
     private System.Threading.Timer? _advancedTimer;
     private DateTimeOffset _lastSyntheticInput = DateTimeOffset.MinValue;
     private bool _moveRight = true;
-    private volatile bool _displayOffRequested;
+    private volatile bool _blackScreenActive;
 
     public KeepAwakeService(CodexBarConfigStore store)
     {
@@ -27,6 +27,8 @@ public sealed class KeepAwakeService
     public bool IsEnabled { get; private set; }
 
     public bool IsAdvancedEnabled { get; private set; }
+    public bool IsBlackScreenActive => _blackScreenActive;
+    public bool IsDisplayHoldActive => _powerRequest.IsDisplayRequired;
 
     public void Load()
     {
@@ -49,9 +51,9 @@ public sealed class KeepAwakeService
         Save();
     }
 
-    public void SetDisplayOffRequested(bool requested)
+    public void SetBlackScreenActive(bool active)
     {
-        _displayOffRequested = requested;
+        _blackScreenActive = active;
         Apply();
     }
 
@@ -63,12 +65,13 @@ public sealed class KeepAwakeService
 
     private void Apply()
     {
-        // The display may be off while the system remains awake. The request
-        // belongs to the process, so async continuations cannot lose it.
-        _powerRequest.Set(IsEnabled || IsAdvancedEnabled || _displayOffRequested,
-            (IsEnabled || IsAdvancedEnabled) && !_displayOffRequested);
+        // The temporary black overlay must stay visible without Windows
+        // turning the panel off or entering Modern Standby. The saved user
+        // preference remains untouched and resumes when the overlay closes.
+        _powerRequest.Set(IsEnabled || IsAdvancedEnabled || _blackScreenActive,
+            IsEnabled || IsAdvancedEnabled || _blackScreenActive);
 
-        if (IsAdvancedEnabled && !_displayOffRequested)
+        if (IsAdvancedEnabled && !_blackScreenActive)
         {
             StartAdvancedTimer();
         }
@@ -101,7 +104,7 @@ public sealed class KeepAwakeService
         try
         {
             var settings = AdvancedSettings.From(_store.Config);
-            if (!IsAdvancedEnabled || _displayOffRequested || (settings.PauseOnFullscreen && IsFullscreenForeground()))
+            if (!IsAdvancedEnabled || _blackScreenActive || (settings.PauseOnFullscreen && IsFullscreenForeground()))
             {
                 return;
             }

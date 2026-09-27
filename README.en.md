@@ -39,19 +39,19 @@ Account data and settings live in `%USERPROFILE%\.codexbar`, or under `CODEXBAR_
 ## Features
 
 - **Accounts and quota:** Save multiple Codex accounts; switch or aggregate them; view five-hour and seven-day quota, reset times, account health, and reset-card expiry when available. Low quota and key reset-window events can trigger deduplicated Windows notifications.
-- **Tray and desktop:** The default tray style is a circular number. Other icon styles, UI scaling, startup shortcuts, notifications, keep-awake behavior, and display-off delay are configurable.
+- **Tray and desktop:** The default tray style is a circular number. Other icon styles, UI scaling, startup shortcuts, notifications, keep-awake behavior, and black-screen delay are configurable.
 - **Image studio:** Enable it from the overview, then select one saved Codex account for each request. It runs in a separate WinUI window, with no web server, local reverse proxy, or account pool. Edit or paste prompts, choose models, aspect ratio, resolution, quality, and reasoning level, and request up to ten images. Upload or paste multiple reference images. A shared queue runs up to six image/SVG jobs at once. Local thumbnail cards preserve prompts, model and time; preview full screen, copy images into other apps, or send an image to SVG conversion. Choices persist between launches. Availability depends on the selected account and upstream service.
 - **Editable SVG:** A separate overview switch and window. Convert a newly generated image, one from the gallery, or a locally uploaded/pasted image. Choose the account, text model, reasoning level, and extra instructions. Stronger models can better reproduce complex shapes and details; manual touch-up may still be needed. Results have their own SVG gallery, preview, file-open, and code-copy actions.
 - **Token and sessions:** Daily activity, streaks, peak usage, local session counts, model distribution, recent sessions, and estimated cost. Image, SVG, and quality-check usage is tracked too. Estimates are not an OpenAI invoice.
 - **Model quality checks:** Select an account, model, reasoning level, and preset or custom prompt. Render the resulting HTML in the app and retain the history. A single run is not proof that a model has degraded, and it uses the selected account's quota.
 - **Import and export:** Default to [codexbar](https://github.com/lizhelang/codexbar) JSON. Complete-credential Codex2API JSON and legacy CSV can also be imported; additional export formats are available.
-- **Updates:** Check manually or enable periodic checks and silent updates. Packages are SHA256-verified, with account/settings backup and a full-package fallback when a matching delta is unavailable.
+- **Updates:** Check manually or enable periodic checks and silent updates. Packages are SHA256-verified, with account/settings backup and a full-package fallback when a matching delta is unavailable. Silent installation waits for all windows and creative jobs to be idle. The settings page also links to the GitHub project.
 
 Image and SVG gallery folders can be changed independently. Metadata indexes and trash are kept separately, and incomplete entries can be recovered or cleaned by age.
 
-### Display-off mode
+### Black-screen mode
 
-Display-off mode uses Windows' normal idle display-off path while the app keeps the system running. Mouse or keyboard input wakes the display. The delay defaults to zero seconds and can be set to 5, 15, 30, 60, or a custom number of seconds. Windows security policies may still require sign-in after an enforced lock.
+Black-screen mode covers every display with an opaque black window while the app keeps running. Mouse or keyboard input restores the desktop. The delay defaults to zero seconds and can be set to 5, 15, 30, 60, or a custom number of seconds. Keep-awake is enabled temporarily and returns to its previous setting on exit.
 
 ## Build
 
