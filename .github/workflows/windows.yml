@@ -14,7 +14,7 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -26,19 +26,35 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          [xml]$project = Get-Content windows/CodexBarWin/CodexBarWin.csproj -Raw
+          [xml]$project = Get-Content windows/CodexBarWin.WinUI/CodexBarWin.WinUI.csproj -Raw
           $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: 核心回归
         run: dotnet run --project tests/WinCodexBar.CoreTests -c Release
-      - name: Windows 窗口回归
-        run: dotnet run --project tests/WinCodexBar.WindowsTests -c Release
+      - name: WinUI 图库与托盘回归
+        shell: pwsh
+        run: |
+          dotnet run --project tests/GalleryStorageSmoke -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tests/TrayIconSmoke -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 发布三个架构
         shell: pwsh
         run: |
           foreach ($rid in @('win-x64', 'win-x86', 'win-arm64')) {
-            dotnet publish windows/CodexBarWin/CodexBarWin.csproj -c Release -r $rid --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "artifacts/$rid"
+            $platform = @{ 'win-x64' = 'x64'; 'win-x86' = 'x86'; 'win-arm64' = 'ARM64' }[$rid]
+            dotnet publish windows/CodexBarWin.WinUI/CodexBarWin.WinUI.csproj -c Release -r $rid -p:Platform=$platform -p:WindowsAppSDKSelfContained=false -p:SelfContained=true -p:PublishSingleFile=false -o "artifacts/$rid"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet publish windows/CodexBarLauncher/CodexBarLauncher.csproj -c Release -r $rid -p:SelfContained=true -p:PublishSingleFile=true -o "artifacts/$rid"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $architecture = $rid.Substring(4)
+            $installer = "artifacts/$rid/WindowsAppRuntimeInstall.exe"
+            curl.exe --location --retry 3 --retry-delay 2 --fail --silent --show-error --output $installer "https://aka.ms/windowsappsdk/2.5/2.5.1/windowsappruntimeinstall-$architecture.exe"
+            if ($LASTEXITCODE -ne 0) { throw "Windows App Runtime 下载失败：$rid" }
+            $signature = Get-AuthenticodeSignature -LiteralPath $installer
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+              throw "Windows App Runtime 签名校验失败：$rid"
+            }
           }
       - name: 打包与校验清单
         shell: pwsh
@@ -47,9 +63,7 @@ jobs:
         if: always()
         with:
           name: windows-validation-and-packages
-          path: |
-            artifacts/packages/
-            tests/WinCodexBar.WindowsTests/bin/Release/net8.0-windows/screenshots/
+          path: artifacts/packages/
 
   release:
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main')
@@ -68,10 +82,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
+          release_flags=(--target "$GITHUB_SHA" --title "WinCodexBar $VERSION · WinUI 工作台")
+          if [[ "$VERSION" == *-* ]]; then
+            release_flags+=(--prerelease)
+          else
+            release_flags+=(--latest)
+          fi
           gh release create "v$VERSION" \
-            release-files/artifacts/packages/*.zip \
-            release-files/artifacts/packages/SHA256SUMS.txt \
-            --target "$GITHUB_SHA" \
-            --title "WinCodexBar $VERSION · 流畅界面与离开模式" \
+            release-files/*.zip \
+            release-files/SHA256SUMS.txt \
             --notes-file "tools/Release-Notes-$VERSION.md" \
-            --latest
+            "${release_flags[@]}"

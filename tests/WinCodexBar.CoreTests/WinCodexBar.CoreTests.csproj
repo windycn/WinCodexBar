@@ -15,6 +15,7 @@
     <Compile Include="../../windows/CodexBarWin/Services/AppDataMigration.cs" Link="Services/AppDataMigration.cs" />
     <Compile Include="../../windows/CodexBarWin/Services/TomlRootEditor.cs" Link="Services/TomlRootEditor.cs" />
     <Compile Include="../../windows/CodexBarWin/Models/AccountUsageHelpers.cs" Link="Models/AccountUsageHelpers.cs" />
+    <Compile Include="../../windows/CodexBarWin/Models/QuotaAlertTracker.cs" Link="Models/QuotaAlertTracker.cs" />
     <Compile Include="../../windows/CodexBarWin/Services/OpenAIUsageService.cs" Link="Services/OpenAIUsageService.cs" />
     <Compile Include="../../windows/CodexBarWin/Models/ResetCreditInfo.cs" Link="Models/ResetCreditInfo.cs" />
   </ItemGroup>

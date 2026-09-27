@@ -90,9 +90,14 @@ public static class OpenAIAccountCSVService
         }
 
         var trimmed = normalized.TrimStart().TrimStart('\uFEFF');
+        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            return ParseFlatJSON(trimmed);
+        }
         if (trimmed.StartsWith("{", StringComparison.Ordinal))
         {
-            return ParseInteropJSON(trimmed);
+            using var document = JsonDocument.Parse(trimmed);
+            return document.RootElement.TryGetProperty("accounts", out _) ? ParseInteropJSON(trimmed) : ParseFlatJSON(trimmed);
         }
 
         return ParseLegacyCSV(normalized);
@@ -162,6 +167,61 @@ public static class OpenAIAccountCSVService
         };
 
         return payload.ToJsonString(options) + "\n";
+    }
+
+    // Codex2API also accepts flat JSON objects and arrays. Keep the default
+    // codexbar bundle above because it preserves more interoperability metadata.
+    public static string ExportFlatJSON(IReadOnlyList<TokenAccount> accounts)
+    {
+        var rows = accounts.Select(account => new
+        {
+            email = account.Email,
+            account_id = account.OpenAIAccountId,
+            access_token = account.AccessToken,
+            refresh_token = account.RefreshToken,
+            id_token = account.IdToken,
+            expires_at = account.ExpiresAt?.ToUnixTimeSeconds(),
+            plan_type = account.PlanType
+        });
+        return JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }) + "\n";
+    }
+
+    public static string ExportLegacyCSV(IReadOnlyList<TokenAccount> accounts, string? activeAccountId)
+    {
+        static string Cell(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+        var lines = new List<string> { string.Join(",", HeaderOrder) };
+        foreach (var account in accounts)
+        {
+            var values = new[] { FormatVersion, account.Email, account.AccountId,
+                account.AccessToken, account.RefreshToken, account.IdToken,
+                account.AccountId == activeAccountId ? "true" : "false" };
+            lines.Add(string.Join(",", values.Select(Cell)));
+        }
+        return string.Join("\n", lines) + "\n";
+    }
+
+    private static ParsedOpenAIAccountCSV ParseFlatJSON(string text)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(text); }
+        catch (JsonException ex)
+        {
+            throw new OpenAIAccountImportException(OpenAIAccountImportError.UnsupportedDataType, $"JSON 格式无效：{ex.Message}");
+        }
+        var input = root is JsonArray array ? array : new JsonArray(root?.DeepClone());
+        var wrapped = new JsonArray();
+        foreach (var item in input)
+        {
+            if (item is not JsonObject obj) continue;
+            var credentials = obj["credentials"] is JsonObject existing ? (JsonObject)existing.DeepClone() : (JsonObject)obj.DeepClone();
+            wrapped.Add(new JsonObject
+            {
+                ["platform"] = "openai", ["type"] = "oauth",
+                ["name"] = GetTrimmedString(GetNodeText(obj["name"])),
+                ["credentials"] = credentials
+            });
+        }
+        return ParseInteropJSON(new JsonObject { ["accounts"] = wrapped }.ToJsonString());
     }
 
     private static JsonObject MakeInteropAccountObject(
@@ -344,7 +404,7 @@ public static class OpenAIAccountCSVService
             var platform = GetTrimmedString(GetNodeText(obj["platform"])).ToLowerInvariant();
             var type = GetTrimmedString(GetNodeText(obj["type"])).ToLowerInvariant();
 
-            if (platform != "openai")
+            if (platform is not ("" or "openai"))
             {
                 continue;
             }

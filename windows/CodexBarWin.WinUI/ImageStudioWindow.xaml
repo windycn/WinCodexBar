@@ -1,0 +1,192 @@
+<Window x:Class="CodexBarWin.WinUI.ImageStudioWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="WinCodexBar 生图工作台">
+    <Window.SystemBackdrop><MicaBackdrop Kind="BaseAlt"/></Window.SystemBackdrop>
+    <Grid Padding="24" RowSpacing="14">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Spacing="3">
+                <TextBlock Text="生图工作台" FontSize="30" FontWeight="SemiBold"/>
+                <TextBlock Text="指定一个 Codex 账号，直接生成或编辑图片。" Opacity="0.76" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Button x:Name="CloseStudioButton" Grid.Column="1" Content="关闭工作台" Click="CloseClicked" VerticalAlignment="Center"/>
+        </Grid>
+        <Grid Grid.Row="1" ColumnSpacing="16">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="390"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <ScrollViewer x:Name="ComposerScroll" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="14">
+                    <Border CornerRadius="16" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="创作设置" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock Text="本次使用的账号" FontWeight="SemiBold"/>
+                            <ComboBox x:Name="AccountCombo" HorizontalAlignment="Stretch" PlaceholderText="请选择账号" SelectionChanged="AccountChanged"/>
+                            <TextBlock x:Name="AccountUsageText" Text="请选择已登录账号" Opacity="0.72" TextWrapping="Wrap"/>
+                            <TextBlock Text="描述你想要的画面" FontWeight="SemiBold"/>
+                            <TextBox x:Name="PromptBox" PlaceholderText="例如：雨后街道上的蓝色霓虹，电影摄影，细节丰富" AcceptsReturn="True" TextWrapping="Wrap" Height="142"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="粘贴提示词" Click="PastePromptClicked"/>
+                                <Button Content="兼容输入法编辑" Click="EditPromptWithNativeImeClicked"/>
+                                <Button Content="清空提示词" Click="ClearPromptClicked"/>
+                            </StackPanel>
+                            <ComboBox x:Name="RequestModelCombo" Header="执行模型" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                <ComboBoxItem Content="GPT 6 Luna" Tag="gpt-6-luna"/>
+                                <ComboBoxItem Content="GPT 6 Sol" Tag="gpt-6-sol"/>
+                                <ComboBoxItem Content="GPT 6 Astra" Tag="gpt-6-astra"/>
+                                <ComboBoxItem Content="GPT 5.6 Luna" Tag="gpt-5.6-luna"/>
+                                <ComboBoxItem Content="GPT 5.6 Terra" Tag="gpt-5.6-terra"/>
+                                <ComboBoxItem Content="GPT 5.6 Sol" Tag="gpt-5.6-sol"/>
+                            </ComboBox>
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <ComboBox x:Name="ModelCombo" Header="生图模型" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="GPT Image 2.5 Flare" Tag="gpt-image-2.5-flare"/>
+                                    <ComboBoxItem Content="GPT Image 2.5 Sunburst" Tag="gpt-image-2.5-sunburst"/>
+                                    <ComboBoxItem Content="GPT Image 2" Tag="gpt-image-2"/>
+                                </ComboBox>
+                                <ComboBox x:Name="SizeCombo" Grid.Column="1" Header="画幅" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="正方形 1:1" Tag="1024x1024"/>
+                                    <ComboBoxItem Content="横向 3:2" Tag="1536x1024"/>
+                                    <ComboBoxItem Content="竖向 2:3" Tag="1024x1536"/>
+                                </ComboBox>
+                            </Grid>
+                            <ComboBox x:Name="ResolutionCombo" Header="请求分辨率" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                <ComboBoxItem Content="1K · 标准" Tag="1k"/>
+                                <ComboBoxItem Content="2K · 高分辨率" Tag="2k"/>
+                                <ComboBoxItem Content="4K · 实验性" Tag="4k"/>
+                            </ComboBox>
+                            <TextBlock Text="分辨率直接提交给所选图像模型；4K 为实验性档位，耗时和可用性取决于账号与上游。" FontSize="12" Opacity="0.72" TextWrapping="Wrap"/>
+                            <ComboBox x:Name="ImageEffortCombo" Header="生成思考强度" HorizontalAlignment="Stretch" SelectedIndex="1">
+                                <ComboBoxItem Content="低" Tag="low"/><ComboBoxItem Content="中" Tag="medium"/>
+                                <ComboBoxItem Content="高" Tag="high"/><ComboBoxItem Content="更高" Tag="xhigh"/>
+                                <ComboBoxItem Content="最大" Tag="max"/>
+                            </ComboBox>
+                            <ComboBox x:Name="QualityCombo" Header="质量" HorizontalAlignment="Stretch" SelectedIndex="1">
+                                <ComboBoxItem Content="快速" Tag="low"/><ComboBoxItem Content="标准" Tag="medium"/><ComboBoxItem Content="高质量" Tag="high"/>
+                                <ComboBoxItem Content="极高（2.5 系列）" Tag="xhigh"/><ComboBoxItem Content="最高（2.5 系列）" Tag="max"/>
+                            </ComboBox>
+                            <NumberBox x:Name="ImageCountBox" Header="生成数量（1–10 张）" Minimum="1" Maximum="10" Value="1" SmallChange="1" SpinButtonPlacementMode="Compact"/>
+                            <TextBlock Text="批量任务逐张生成；取消后保留已完成的图片。" FontSize="12" Opacity="0.72" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="上传参考文件（可多选）" Click="ChooseReferenceClicked"/>
+                                <Button Content="粘贴图片" Click="PasteReferenceClicked"/>
+                                <Button x:Name="ClearReferenceButton" Content="清空" Click="ClearReferenceClicked" Visibility="Collapsed"/>
+                            </StackPanel>
+                            <TextBlock x:Name="ReferenceText" Text="没有参考图 · 使用文生图" TextWrapping="Wrap" Opacity="0.7"/>
+                            <ListView x:Name="ReferenceList" Height="95" Visibility="Collapsed" SelectionMode="None"/>
+                            <Button x:Name="GenerateButton" Content="开始生成" Click="GenerateClicked" Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch"/>
+                            <Button x:Name="CancelButton" Content="取消生成" Click="CancelClicked" HorizontalAlignment="Stretch" Visibility="Collapsed"/>
+                            <ProgressBar x:Name="GenerationProgress" IsIndeterminate="True" Visibility="Collapsed"/>
+                            <TextBlock Text="任务队列 · 最多同时运行 6 项" FontWeight="SemiBold"/>
+                            <ListView x:Name="CreativeQueueList" Height="112" SelectionMode="None">
+                                <ListView.ItemTemplate><DataTemplate><TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"/></DataTemplate></ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Border>
+                    <Border CornerRadius="16" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="转可编辑SVG" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock Text="可转换右侧选中的历史图片，也可直接转换刚生成的图片。生成的是可编辑路径和形状，复杂照片可能需要人工调整。" Opacity="0.76" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock x:Name="SvgTargetText" Text="转换目标：尚无图片" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
+                                <Button Content="使用最近生成" Click="UseLatestForSvgClicked"/>
+                            </StackPanel>
+                            <ComboBox x:Name="VectorModelCombo" Header="矢量转换模型" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                <ComboBoxItem Content="GPT 6 Luna" Tag="gpt-6-luna"/><ComboBoxItem Content="GPT 6 Sol" Tag="gpt-6-sol"/><ComboBoxItem Content="GPT 6 Astra" Tag="gpt-6-astra"/>
+                                <ComboBoxItem Content="GPT 5.6 Sol" Tag="gpt-5.6-sol"/><ComboBoxItem Content="GPT 5.6 Terra" Tag="gpt-5.6-terra"/><ComboBoxItem Content="GPT 5.6 Luna" Tag="gpt-5.6-luna"/>
+                            </ComboBox>
+                            <TextBlock Text="复杂图片可选择更强的模型，通常能更准确地重绘轮廓和细节；实际效果仍取决于原图。" FontSize="12" Opacity="0.72" TextWrapping="Wrap"/>
+                            <ComboBox x:Name="VectorEffortCombo" Header="矢量转换思考强度" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                <ComboBoxItem Content="低" Tag="low"/><ComboBoxItem Content="中" Tag="medium"/>
+                                <ComboBoxItem Content="高" Tag="high"/><ComboBoxItem Content="更高" Tag="xhigh"/>
+                                <ComboBoxItem Content="最大" Tag="max"/>
+                            </ComboBox>
+                            <TextBox x:Name="VectorGuidanceBox" Header="补充要求（可选）" PlaceholderText="例如：保留文字轮廓，线条简洁" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                            <Button Content="兼容输入法编辑" Click="EditVectorGuidanceWithNativeImeClicked" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="VectorConvertButton" Content="转可编辑SVG" Click="ConvertSvgClicked" Style="{ThemeResource AccentButtonStyle}"/>
+                                <Button x:Name="VectorCancelButton" Content="取消" Click="CancelSvgClicked" Visibility="Collapsed"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="预览 SVG" Click="PreviewSvgClicked"/>
+                                <Button Content="全屏预览 SVG" Click="FullScreenSvgClicked"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="打开 SVG 文件" Click="OpenSvgClicked"/>
+                                <Button Content="复制 SVG 代码" Click="CopySvgClicked"/>
+                            </StackPanel>
+                            <TextBlock x:Name="SvgStatusText" Text="尚未转换" Opacity="0.72" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    <Border CornerRadius="16" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="图片图库存储" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="GalleryPathText" TextWrapping="Wrap" FontSize="12" Opacity="0.78"/>
+                            <Button Content="更改图库目录" Click="ChangeGalleryPathClicked" HorizontalAlignment="Left"/>
+                            <TextBlock Text="图片与 metadata 索引分开存放；失配文件自动移到 trash。" TextWrapping="Wrap" FontSize="12" Opacity="0.72"/>
+                            <ComboBox x:Name="TrashRetentionCombo" Header="清理回收站" SelectedIndex="1" HorizontalAlignment="Stretch" SelectionChanged="TrashRetentionChanged">
+                                <ComboBoxItem Content="全部清理" Tag="0"/><ComboBoxItem Content="超过 1 周" Tag="7"/>
+                                <ComboBoxItem Content="超过 1 个月" Tag="30"/><ComboBoxItem Content="超过 3 个月" Tag="90"/>
+                                <ComboBoxItem Content="自定义天数" Tag="custom"/>
+                            </ComboBox>
+                            <NumberBox x:Name="CustomTrashDays" Header="超过多少天" Minimum="1" Maximum="3650" Value="14" Visibility="Collapsed"/>
+                            <Button Content="清理图片回收站" Click="CleanTrashClicked" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                    <InfoBar IsOpen="True" Severity="Informational" Title="使用说明" Message="仅向当前所选账号发送请求，不使用号池或本地反向代理。Codex 生图接口可能变化，能否使用取决于账号权限与上游支持。"/>
+                </StackPanel>
+            </ScrollViewer>
+                <Grid Grid.Column="1" RowSpacing="12">
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="250"/></Grid.RowDefinitions>
+                <Border CornerRadius="16" Padding="14" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <Grid>
+                        <StackPanel x:Name="EmptyPreview" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+                            <SymbolIcon Symbol="Pictures" HorizontalAlignment="Center"/>
+                            <TextBlock Text="生成结果会显示在这里" FontSize="19" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="支持文生图，也可以上传或粘贴多张参考图进行编辑。" Opacity="0.7" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <Image x:Name="ResultImage" Stretch="Uniform" Visibility="Collapsed" DoubleTapped="ResultImageDoubleTapped"/>
+                        <WebView2 x:Name="SvgResultWebView" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+                <Grid Grid.Row="1" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ResultTitle" Text="本机图库" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Content="取消选择" Click="ClearGallerySelectionClicked" Margin="0,0,8,0"/>
+                    <Button Grid.Column="2" Content="全屏预览" Click="FullScreenImageClicked" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="GalleryPeriodCombo" Grid.Column="3" SelectedIndex="0" SelectionChanged="GalleryPeriodChanged">
+                        <ComboBoxItem Content="全部时间" Tag="all"/><ComboBoxItem Content="最近 7 天" Tag="7d"/><ComboBoxItem Content="今天" Tag="today"/>
+                    </ComboBox>
+                </Grid>
+                <StackPanel Grid.Row="2" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="转可编辑SVG" Click="OpenVectorStudioClicked" Style="{ThemeResource AccentButtonStyle}"/>
+                        <Button Content="复制图片" Click="CopyImageClicked"/>
+                        <Button Content="作为参考图" Click="UseResultAsReferenceClicked"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="打开图库目录" Click="OpenGalleryClicked"/>
+                        <Button Content="复用提示词" Click="ReusePromptClicked"/>
+                        <Button Content="删除选中图片" Click="DeleteImageClicked"/>
+                    </StackPanel>
+                </StackPanel>
+                <GridView x:Name="GalleryList" Grid.Row="3" SelectionChanged="GallerySelectionChanged" SelectionMode="Single">
+                    <GridView.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid ItemWidth="180" ItemHeight="224"/></ItemsPanelTemplate></GridView.ItemsPanel>
+                    <GridView.ItemTemplate><DataTemplate>
+                        <Border Width="170" Height="214" Padding="8" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                            <StackPanel Spacing="5">
+                                <Border CornerRadius="7" Height="116" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                                </Border>
+                                <TextBlock Text="{Binding Prompt}" MaxLines="2" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" FontSize="12"/>
+                                <TextBlock Text="{Binding CreatedLabel}" Opacity="0.68" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding ModelLabel}" Opacity="0.76" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate></GridView.ItemTemplate>
+                </GridView>
+            </Grid>
+        </Grid>
+        <TextBlock x:Name="StatusText" Grid.Row="2" Text="工作台已就绪 · 尚未发起请求" Opacity="0.7" TextWrapping="Wrap"/>
+    </Grid>
+</Window>

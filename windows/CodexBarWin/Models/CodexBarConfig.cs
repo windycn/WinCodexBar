@@ -77,6 +77,12 @@ public sealed class TokenPricePreset
     [JsonPropertyName("output_usd_per_million")]
     public double OutputUsdPerMillion { get; set; }
 
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "built_in";
+
+    [JsonPropertyName("synced_at")]
+    public DateTimeOffset? SyncedAt { get; set; }
+
     public TokenPricePreset Clone()
     {
         return new TokenPricePreset
@@ -84,6 +90,8 @@ public sealed class TokenPricePreset
             InputUsdPerMillion = InputUsdPerMillion,
             CachedInputUsdPerMillion = CachedInputUsdPerMillion,
             OutputUsdPerMillion = OutputUsdPerMillion,
+            Source = Source,
+            SyncedAt = SyncedAt,
         };
     }
 
@@ -105,6 +113,9 @@ public sealed class TokenPricePreset
             ["gpt-6-astra"] = new() { InputUsdPerMillion = 10, CachedInputUsdPerMillion = 1, OutputUsdPerMillion = 50 },
             ["gpt-6-sol"] = new() { InputUsdPerMillion = 2, CachedInputUsdPerMillion = 0.2, OutputUsdPerMillion = 10 },
             ["gpt-6-luna"] = new() { InputUsdPerMillion = 0.1, CachedInputUsdPerMillion = 0.01, OutputUsdPerMillion = 0.5 },
+            ["gpt-5.6-sol"] = new() { InputUsdPerMillion = 4, CachedInputUsdPerMillion = 0.4, OutputUsdPerMillion = 20 },
+            ["gpt-5.6-terra"] = new() { InputUsdPerMillion = 2, CachedInputUsdPerMillion = 0.2, OutputUsdPerMillion = 12 },
+            ["gpt-5.6-luna"] = new() { InputUsdPerMillion = 0.2, CachedInputUsdPerMillion = 0.02, OutputUsdPerMillion = 1.2 },
             ["gpt-5.5"] = new() { InputUsdPerMillion = 5, CachedInputUsdPerMillion = 0.5, OutputUsdPerMillion = 30 },
             ["gpt-5.4"] = new() { InputUsdPerMillion = 2.5, CachedInputUsdPerMillion = 0.25, OutputUsdPerMillion = 15 },
             ["gpt-5.4-mini"] = new() { InputUsdPerMillion = 0.75, CachedInputUsdPerMillion = 0.075, OutputUsdPerMillion = 4.5 },
@@ -150,6 +161,15 @@ public sealed class CodexBarOpenAISettings
     [JsonPropertyName("token_price_presets")]
     public Dictionary<string, TokenPricePreset> TokenPricePresets { get; set; } = TokenPricePreset.CreateDefaults();
 
+    [JsonPropertyName("auto_sync_official_pricing")]
+    public bool AutoSyncOfficialPricing { get; set; } = true;
+
+    [JsonPropertyName("official_pricing_sync_interval_hours")]
+    public int OfficialPricingSyncIntervalHours { get; set; } = 24;
+
+    [JsonPropertyName("official_pricing_last_success_at")]
+    public DateTimeOffset? OfficialPricingLastSuccessAt { get; set; }
+
     public void EnsurePricingDefaults()
     {
         if (TokenPricePresets is null || TokenPricePresets.Count == 0)
@@ -158,6 +178,7 @@ public sealed class CodexBarOpenAISettings
         }
 
         var defaults = TokenPricePreset.CreateDefaults();
+        OfficialPricingSyncIntervalHours = Math.Clamp(OfficialPricingSyncIntervalHours, 1, 168);
         foreach (var pair in defaults)
         {
             if (!TokenPricePresets.ContainsKey(pair.Key))
@@ -219,10 +240,10 @@ public sealed class CodexBarOpenAISettings
 public sealed class CodexBarGlobalSettings
 {
     [JsonPropertyName("default_model")]
-    public string DefaultModel { get; set; } = "gpt-6-sol";
+    public string DefaultModel { get; set; } = "gpt-6-luna";
 
     [JsonPropertyName("review_model")]
-    public string ReviewModel { get; set; } = "gpt-6-sol";
+    public string ReviewModel { get; set; } = "gpt-6-luna";
 
     [JsonPropertyName("reasoning_effort")]
     public string ReasoningEffort { get; set; } = "medium";
@@ -233,6 +254,29 @@ public sealed class CodexBarGlobalSettings
 
 public sealed class CodexBarConfig
 {
+    [JsonPropertyName("image_studio_enabled")]
+    public bool ImageStudioEnabled { get; set; }
+
+    [JsonPropertyName("vector_studio_enabled")]
+    public bool VectorStudioEnabled { get; set; }
+
+    [JsonPropertyName("quality_check_enabled")]
+    public bool QualityCheckEnabled { get; set; }
+
+    [JsonPropertyName("image_studio")]
+    public ImageStudioPreferences ImageStudio { get; set; } = new();
+
+    [JsonPropertyName("vector_studio")]
+    public VectorStudioPreferences VectorStudio { get; set; } = new();
+
+    [JsonPropertyName("image_gallery_path")]
+    public string ImageGalleryPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("svg_gallery_path")]
+    public string SvgGalleryPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("quality_check")]
+    public QualityCheckPreferences QualityCheck { get; set; } = new();
     [JsonPropertyName("global")]
     public CodexBarGlobalSettings Global { get; set; } = new();
 
@@ -243,16 +287,22 @@ public sealed class CodexBarConfig
     public int UiScalePercent { get; set; }
 
     [JsonPropertyName("tray_icon_style")]
-    public string TrayIconStyle { get; set; } = "ring";
+    public string TrayIconStyle { get; set; } = "ringpercent";
 
     [JsonPropertyName("auto_check_updates")]
     public bool AutoCheckUpdates { get; set; } = true;
+
+    [JsonPropertyName("silent_updates")]
+    public bool SilentUpdates { get; set; }
+
+    [JsonPropertyName("system_notifications_enabled")]
+    public bool SystemNotificationsEnabled { get; set; } = true;
 
     [JsonPropertyName("keep_awake_enabled")]
     public bool KeepAwakeEnabled { get; set; }
 
     [JsonPropertyName("away_mode_delay_seconds")]
-    public int AwayModeDelaySeconds { get; set; } = 5;
+    public int AwayModeDelaySeconds { get; set; }
 
     [JsonPropertyName("advanced_keep_awake_enabled")]
     public bool AdvancedKeepAwakeEnabled { get; set; }
@@ -282,6 +332,11 @@ public sealed class CodexBarConfig
             UiScalePercent = UiScalePercent,
             TrayIconStyle = TrayIconStyle,
             AutoCheckUpdates = AutoCheckUpdates,
+            SilentUpdates = SilentUpdates,
+            SystemNotificationsEnabled = SystemNotificationsEnabled,
+            ImageStudioEnabled = ImageStudioEnabled,
+            VectorStudioEnabled = VectorStudioEnabled,
+            QualityCheckEnabled = QualityCheckEnabled,
             KeepAwakeEnabled = KeepAwakeEnabled,
             AwayModeDelaySeconds = AwayModeDelaySeconds,
             AdvancedKeepAwakeEnabled = AdvancedKeepAwakeEnabled,
@@ -291,6 +346,11 @@ public sealed class CodexBarConfig
             AdvancedKeepAwakeMovePattern = AdvancedKeepAwakeMovePattern,
             AdvancedKeepAwakePauseOnFullscreen = AdvancedKeepAwakePauseOnFullscreen,
             StartWithWindows = StartWithWindows,
+            ImageStudio = ImageStudio.Clone(),
+            VectorStudio = VectorStudio.Clone(),
+            ImageGalleryPath = ImageGalleryPath,
+            SvgGalleryPath = SvgGalleryPath,
+            QualityCheck = QualityCheck.Clone(),
             Global = new CodexBarGlobalSettings
             {
                 DefaultModel = Global.DefaultModel,
@@ -310,6 +370,9 @@ public sealed class CodexBarConfig
                 TokenPricingModel = OpenAI.TokenPricingModel,
                 UsdToCnyRate = OpenAI.UsdToCnyRate,
                 TokenPricePresets = OpenAI.CloneTokenPricePresets(),
+                AutoSyncOfficialPricing = OpenAI.AutoSyncOfficialPricing,
+                OfficialPricingSyncIntervalHours = OpenAI.OfficialPricingSyncIntervalHours,
+                OfficialPricingLastSuccessAt = OpenAI.OfficialPricingLastSuccessAt,
             },
         };
     }
@@ -319,6 +382,9 @@ public sealed class CodexBarConfig
         "gpt-6-astra",
         "gpt-6-sol",
         "gpt-6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.5",
         "gpt-5.4",
         "gpt-5.4-mini",
@@ -341,4 +407,39 @@ public sealed class CodexBarConfig
         "standard",
         "fast",
     };
+}
+
+public sealed class ImageStudioPreferences
+{
+    public string SelectedAccountId { get; set; } = string.Empty;
+    public string RequestModel { get; set; } = "gpt-6-luna";
+    public string ImageModel { get; set; } = "gpt-image-2.5-flare";
+    public string ImageEffort { get; set; } = "medium";
+    public string Size { get; set; } = "1024x1024";
+    public string Resolution { get; set; } = "1k";
+    public string Quality { get; set; } = "medium";
+    public int Count { get; set; } = 1;
+    public string Prompt { get; set; } = string.Empty;
+    public string VectorModel { get; set; } = "gpt-6-luna";
+    public string VectorEffort { get; set; } = "low";
+    public string VectorGuidance { get; set; } = string.Empty;
+    public ImageStudioPreferences Clone() => (ImageStudioPreferences)MemberwiseClone();
+}
+
+public sealed class VectorStudioPreferences
+{
+    public string SelectedAccountId { get; set; } = string.Empty;
+    public string Model { get; set; } = "gpt-6-luna";
+    public string Effort { get; set; } = "low";
+    public string Guidance { get; set; } = string.Empty;
+    public VectorStudioPreferences Clone() => (VectorStudioPreferences)MemberwiseClone();
+}
+
+public sealed class QualityCheckPreferences
+{
+    public string SelectedAccountId { get; set; } = string.Empty;
+    public string Model { get; set; } = "gpt-6-luna";
+    public string Effort { get; set; } = "medium";
+    public string Prompt { get; set; } = string.Empty;
+    public QualityCheckPreferences Clone() => (QualityCheckPreferences)MemberwiseClone();
 }

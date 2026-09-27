@@ -7,18 +7,17 @@ namespace CodexBarWin.Services;
 
 public sealed class KeepAwakeService
 {
-    private const uint EsContinuous = 0x80000000;
-    private const uint EsSystemRequired = 0x00000001;
-    private const uint EsDisplayRequired = 0x00000002;
     private const int InputMouse = 0;
     private const uint MouseEventMove = 0x0001;
     private const int MonitorIntervalMs = 500;
 
     private readonly CodexBarConfigStore _store;
+    private readonly SystemPowerRequest _powerRequest = new();
     private readonly object _gate = new();
     private System.Threading.Timer? _advancedTimer;
     private DateTimeOffset _lastSyntheticInput = DateTimeOffset.MinValue;
     private bool _moveRight = true;
+    private volatile bool _displayOffRequested;
 
     public KeepAwakeService(CodexBarConfigStore store)
     {
@@ -50,24 +49,26 @@ public sealed class KeepAwakeService
         Save();
     }
 
+    public void SetDisplayOffRequested(bool requested)
+    {
+        _displayOffRequested = requested;
+        Apply();
+    }
+
     public void ClearForProcessExit()
     {
         StopAdvancedTimer();
-        ClearExecutionState();
+        _powerRequest.Dispose();
     }
 
     private void Apply()
     {
-        if (IsEnabled || IsAdvancedEnabled)
-        {
-            SetThreadExecutionState(EsContinuous | EsSystemRequired | EsDisplayRequired);
-        }
-        else
-        {
-            ClearExecutionState();
-        }
+        // The display may be off while the system remains awake. The request
+        // belongs to the process, so async continuations cannot lose it.
+        _powerRequest.Set(IsEnabled || IsAdvancedEnabled || _displayOffRequested,
+            (IsEnabled || IsAdvancedEnabled) && !_displayOffRequested);
 
-        if (IsAdvancedEnabled)
+        if (IsAdvancedEnabled && !_displayOffRequested)
         {
             StartAdvancedTimer();
         }
@@ -100,7 +101,7 @@ public sealed class KeepAwakeService
         try
         {
             var settings = AdvancedSettings.From(_store.Config);
-            if (!IsAdvancedEnabled || (settings.PauseOnFullscreen && IsFullscreenForeground()))
+            if (!IsAdvancedEnabled || _displayOffRequested || (settings.PauseOnFullscreen && IsFullscreenForeground()))
             {
                 return;
             }
@@ -181,11 +182,6 @@ public sealed class KeepAwakeService
         }
     }
 
-    private static void ClearExecutionState()
-    {
-        SetThreadExecutionState(EsContinuous);
-    }
-
     private static int GetIdleMilliseconds()
     {
         var info = new LastInputInfo
@@ -243,9 +239,6 @@ public sealed class KeepAwakeService
 
         SendInput(1, new[] { input }, Marshal.SizeOf<Input>());
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern uint SetThreadExecutionState(uint esFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetLastInputInfo(ref LastInputInfo plii);

@@ -146,7 +146,7 @@ public static class TokenUsageScanService
         {
             try
             {
-                foreach (var line in File.ReadLines(file))
+                foreach (var line in ReadSessionLines(file))
                 {
                     if (!line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
                     {
@@ -306,7 +306,7 @@ public static class TokenUsageScanService
             {
                 DateTimeOffset? first = null;
                 DateTimeOffset? last = null;
-                foreach (var line in File.ReadLines(file))
+                foreach (var line in ReadSessionLines(file))
                 {
                     if (!line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
                     {
@@ -497,7 +497,7 @@ public static class TokenUsageScanService
                 long tokens = 0;
                 var events = 0;
 
-                foreach (var line in File.ReadLines(file))
+                foreach (var line in ReadSessionLines(file))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                     {
@@ -1080,6 +1080,17 @@ public static class TokenUsageScanService
                 yield return file;
             }
         }
+    }
+
+    private static IEnumerable<string> ReadSessionLines(string file)
+    {
+        // Codex keeps the active session open for writing. File.ReadLines uses a
+        // stricter share mode and can silently drop the entire current session.
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        while (reader.ReadLine() is { } line)
+            yield return line;
     }
 
     private static bool TryReadTimestamp(JsonElement root, out DateTimeOffset timestamp)

@@ -1,0 +1,481 @@
+<Window
+    x:Class="CodexBarWin.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="WinCodexBar">
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </Window.SystemBackdrop>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TitleBar x:Name="AppTitleBar" Title="WinCodexBar" Subtitle="Codex 工作台"
+                  IsPaneToggleButtonVisible="True" PaneToggleRequested="AppTitleBar_PaneToggleRequested">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/app.png" />
+            </TitleBar.IconSource>
+        </TitleBar>
+        <NavigationView x:Name="Navigation" Grid.Row="1" PaneDisplayMode="Auto" IsBackButtonVisible="Collapsed"
+                    IsSettingsVisible="False" IsPaneToggleButtonVisible="False"
+                    OpenPaneLength="210" CompactPaneLength="52" Background="Transparent"
+                    SelectionChanged="Navigation_SelectionChanged">
+        <NavigationView.Resources>
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+        </NavigationView.Resources>
+        <NavigationView.MenuItems>
+            <NavigationViewItem Content="总览" Tag="overview" Icon="Home" />
+            <NavigationViewItem Content="账号" Tag="accounts" Icon="Contact" />
+            <NavigationViewItem Content="Token 活动" Tag="activity" Icon="ViewAll" />
+            <NavigationViewItem Content="会话分析" Tag="sessions" Icon="List" />
+            <NavigationViewItem Content="生图工作台" Tag="studio" Icon="Pictures" />
+            <NavigationViewItem Content="转可编辑SVG" Tag="vector" Icon="Edit" />
+            <NavigationViewItem Content="降智检测" Tag="quality" Icon="Bullets" />
+            <NavigationViewItem x:Name="SettingsNavigationItem" Content="设置" Tag="settings" Icon="Setting">
+                <NavigationViewItem.MenuItems>
+                    <NavigationViewItem Content="界面与行为" Tag="settings:behavior" Icon="View"/>
+                    <NavigationViewItem Content="用量与刷新" Tag="settings:refresh" Icon="Refresh"/>
+                    <NavigationViewItem Content="费用估算" Tag="settings:pricing" Icon="Calculator"/>
+                    <NavigationViewItem Content="模型参数" Tag="settings:models" Icon="Edit"/>
+                    <NavigationViewItem Content="外观与托盘" Tag="settings:appearance" Icon="FontColor"/>
+                    <NavigationViewItem Content="系统集成" Tag="settings:system" Icon="Link"/>
+                    <NavigationViewItem Content="快捷方式" Tag="settings:shortcuts" Icon="Pin"/>
+                </NavigationViewItem.MenuItems>
+            </NavigationViewItem>
+        </NavigationView.MenuItems>
+        <NavigationView.Content>
+            <Grid Padding="24,16,24,24" RowSpacing="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid x:Name="PageHeader" ColumnSpacing="12" MaxWidth="1040" HorizontalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="3">
+                        <TextBlock x:Name="PageTitle" Text="WinCodexBar" FontSize="32" FontWeight="SemiBold" />
+                        <TextBlock x:Name="PageSubtitle" Text="你的 Codex 账号与额度，一眼看清。" Opacity="0.84" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="刷新用量" Click="RefreshClicked" VerticalAlignment="Center" />
+                </Grid>
+                <Grid Grid.Row="1">
+                    <ScrollViewer x:Name="OverviewPage" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Center" SizeChanged="ResponsivePage_SizeChanged">
+                        <StackPanel Spacing="16" MaxWidth="1040" HorizontalAlignment="Center">
+                            <Border x:Name="ActiveUsageCard" CornerRadius="16" Padding="24" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="当前账号" FontSize="15" Opacity="0.84" />
+                                    <TextBlock x:Name="ActiveAccountText" Text="尚未添加账号" FontSize="26" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="ActiveUsageText" Text="用量未提供" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="ActiveResetText" Opacity="0.84" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="管理账号" Click="OpenAccountsClicked" />
+                                        <Button Content="添加账号" Click="AddAccountClicked" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="14">
+                                    <TextBlock Text="创作与检测" FontSize="19" FontWeight="SemiBold" />
+                                    <Grid ColumnSpacing="16" RowSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="生图工作台" FontSize="17" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="1" Text="转可编辑 SVG" FontSize="17" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="2" Text="降智检测" FontSize="17" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="1" Text="选定账号生成图片，查看本机图库。" TextWrapping="Wrap" Opacity="0.84" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="从图库、文件或剪贴板选择图片，转换后单独入库。" TextWrapping="Wrap" Opacity="0.84" />
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="用预设题目检查选定账号的模型表现，保存检测结果。" TextWrapping="Wrap" Opacity="0.84" />
+                                        <ToggleSwitch Grid.Row="2" x:Name="ImageStudioOverviewToggle" Header="启用生图工作台" OnContent="已开启" OffContent="已关闭" Toggled="ImageStudioOverviewToggle_Toggled" />
+                                        <ToggleSwitch Grid.Row="2" Grid.Column="1" x:Name="VectorStudioOverviewToggle" Header="启用转可编辑 SVG" OnContent="已开启" OffContent="已关闭" Toggled="VectorStudioOverviewToggle_Toggled" />
+                                        <ToggleSwitch Grid.Row="2" Grid.Column="2" x:Name="QualityCheckOverviewToggle" Header="启用降智检测" OnContent="已开启" OffContent="已关闭" Toggled="QualityCheckOverviewToggle_Toggled" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border CornerRadius="14" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="5">
+                                        <TextBlock Text="账号总数" Opacity="0.84" />
+                                        <TextBlock x:Name="AccountCountText" Text="0" FontSize="24" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" CornerRadius="14" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="5">
+                                        <TextBlock Text="后台刷新" Opacity="0.84" />
+                                        <TextBlock Text="当前 1 分钟 · 其他 5 分钟" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="快捷操作" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBlock Text="左键打开托盘面板，双击打开工作台。保持唤醒默认关闭。" TextWrapping="Wrap" Opacity="0.84" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="KeepAwakeOverviewButton" Content="开启保持唤醒" Click="KeepAwakeClicked" />
+                                        <Button Content="黑屏离开" Click="AwayModeClicked" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Grid x:Name="AccountsPage" Visibility="Collapsed" RowSpacing="12" MaxWidth="1040" HorizontalAlignment="Center">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="添加账号" Click="AddAccountClicked" />
+                            <Button Content="导入" Click="ImportClicked" />
+                            <Button Content="导出" Click="ExportClicked" />
+                            <Button Content="模型质量检测" Click="QualityCheckClicked" />
+                        </StackPanel>
+                        <ListView x:Name="AccountList" Grid.Row="1" ItemsSource="{Binding Accounts}"
+                                  HorizontalContentAlignment="Stretch" SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,8" Padding="18" CornerRadius="14"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                        <Grid ColumnSpacing="10" RowSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Plan}" Opacity="0.84" />
+                                            <TextBlock Grid.Row="1" Text="{Binding Usage}" FontSize="17" FontWeight="SemiBold" />
+                                            <TextBlock Grid.Row="2" Text="{Binding Reset}" Opacity="0.84" TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Grid.Row="1" Grid.RowSpan="2" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <Button Content="详情" Click="AccountDetailsClicked" />
+                                                <Button Content="切换" Click="AccountSwitchClicked" />
+                                                <Button Content="刷新" Click="AccountRefreshClicked" />
+                                                <Button Content="删除" Click="AccountDeleteClicked" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                    <ScrollViewer x:Name="ActivityPage" Visibility="Collapsed" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Center" SizeChanged="ResponsivePage_SizeChanged">
+                        <StackPanel MaxWidth="1040" Spacing="14" HorizontalAlignment="Center">
+                            <Grid ColumnSpacing="12" RowSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="今日 Token" Opacity="0.8"/><TextBlock x:Name="TodayActivityText" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                                <Border Grid.Column="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="本周 Token" Opacity="0.8"/><TextBlock x:Name="WeekActivityText" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                                <Border Grid.Row="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="本月 Token" Opacity="0.8"/><TextBlock x:Name="MonthActivityText" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                                <Border Grid.Row="1" Grid.Column="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="累计 Token" Opacity="0.8"/><TextBlock x:Name="TotalActivityText" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                            </Grid>
+                            <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="活动概况" FontSize="19" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="ActivityStreakText" Text="正在读取本地会话记录…" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="ActivityCostText" Text="" TextWrapping="Wrap" Opacity="0.85"/>
+                                    <TextBlock x:Name="DirectUsageText" Text="" TextWrapping="Wrap" Opacity="0.85"/>
+                                </StackPanel>
+                            </Border>
+                            <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="每日 Token · 最近 30 天" FontSize="19" FontWeight="SemiBold"/>
+                                    <ItemsControl x:Name="ActivityDaysList"><ItemsControl.ItemTemplate><DataTemplate>
+                                        <Grid ColumnSpacing="10" Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="95"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Date}" FontSize="13" VerticalAlignment="Center"/>
+                                            <ProgressBar Grid.Column="1" Value="{Binding Percent}" Maximum="100" Height="8" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Tokens}" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                    <StackPanel Spacing="9">
+                                        <TextBlock Text="每周 Token · 最近 12 周" FontSize="19" FontWeight="SemiBold"/>
+                                        <ItemsControl x:Name="ActivityWeeksList"><ItemsControl.ItemTemplate><DataTemplate>
+                                            <Grid ColumnSpacing="7" Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Date}" FontSize="12" VerticalAlignment="Center"/>
+                                                <ProgressBar Grid.Column="1" Value="{Binding Percent}" Maximum="100" Height="9" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Tokens}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                    <StackPanel Spacing="9">
+                                        <TextBlock Text="每月 Token · 最近 12 个月" FontSize="19" FontWeight="SemiBold"/>
+                                        <ItemsControl x:Name="ActivityMonthsList"><ItemsControl.ItemTemplate><DataTemplate>
+                                            <Grid ColumnSpacing="7" Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="65"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Date}" FontSize="12" VerticalAlignment="Center"/>
+                                                <ProgressBar Grid.Column="1" Value="{Binding Percent}" Maximum="100" Height="9" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Tokens}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <StackPanel Spacing="9">
+                                    <TextBlock Text="今日分时 Token · 每小时" FontSize="19" FontWeight="SemiBold"/>
+                                    <ItemsControl x:Name="ActivityHoursList"><ItemsControl.ItemTemplate><DataTemplate>
+                                        <Grid ColumnSpacing="9" Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Date}" FontSize="12" VerticalAlignment="Center"/>
+                                            <ProgressBar Grid.Column="1" Value="{Binding Percent}" Maximum="100" Height="9" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Tokens}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                    <StackPanel Spacing="9"><TextBlock Text="来源分布" FontSize="19" FontWeight="SemiBold"/>
+                                        <ItemsControl x:Name="ActivitySourcesList"><ItemsControl.ItemTemplate><DataTemplate>
+                                            <Grid ColumnSpacing="8" Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="115"/><ColumnDefinition Width="85"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Tasks}" FontSize="12" Opacity="0.75" HorizontalAlignment="Right"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Tokens}" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                            </Grid>
+                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                    <StackPanel Spacing="9"><TextBlock Text="直连任务模型" FontSize="19" FontWeight="SemiBold"/>
+                                        <ItemsControl x:Name="ActivityModelsList"><ItemsControl.ItemTemplate><DataTemplate>
+                                            <Grid ColumnSpacing="8" Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="115"/><ColumnDefinition Width="85"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Tasks}" FontSize="12" Opacity="0.75" HorizontalAlignment="Right"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Tokens}" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                            </Grid>
+                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <ScrollViewer x:Name="SessionsPage" Visibility="Collapsed" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Center" SizeChanged="ResponsivePage_SizeChanged">
+                        <StackPanel MaxWidth="1040" Spacing="14" HorizontalAlignment="Center">
+                            <Grid ColumnSpacing="12" RowSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="会话总数" Opacity="0.8"/><TextBlock x:Name="SessionCountValue" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                                <Border Grid.Column="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="活跃 / 已归档" Opacity="0.8"/><TextBlock x:Name="SessionSplitValue" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                                <Border Grid.Row="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="会话平均 Token" Opacity="0.8"/><TextBlock x:Name="SessionAverageValue" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                                <Border Grid.Row="1" Grid.Column="1" CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"><StackPanel Spacing="4"><TextBlock Text="最长会话" Opacity="0.8"/><TextBlock x:Name="SessionLongestValue" Text="读取中…" FontSize="26" FontWeight="SemiBold"/></StackPanel></Border>
+                            </Grid>
+                            <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <StackPanel Spacing="9"><TextBlock Text="模型使用" FontSize="19" FontWeight="SemiBold"/>
+                                    <ItemsControl x:Name="ModelUsageList"><ItemsControl.ItemTemplate><DataTemplate>
+                                        <Grid ColumnSpacing="10" Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Model}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Sessions}" HorizontalAlignment="Right"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Tokens}" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                        </Grid>
+                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Border CornerRadius="12" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <StackPanel Spacing="9"><TextBlock Text="最近会话" FontSize="19" FontWeight="SemiBold"/>
+                                    <ItemsControl x:Name="RecentSessionList"><ItemsControl.ItemTemplate><DataTemplate>
+                                        <Grid ColumnSpacing="10" Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/><ColumnDefinition Width="95"/></Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="2"><TextBlock Text="{Binding Model}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Started}" FontSize="12" Opacity="0.8"/></StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding Duration}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Tokens}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Center" SizeChanged="ResponsivePage_SizeChanged">
+                        <StackPanel MaxWidth="1040" Spacing="12" HorizontalAlignment="Center">
+                            <TextBlock x:Name="BehaviorSettingsHeading" Text="界面与行为" FontSize="20" FontWeight="SemiBold" />
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="16">
+                                    <ToggleSwitch x:Name="KeepAwakeToggle" Header="保持唤醒" OnContent="已开启" OffContent="默认关闭" Toggled="KeepAwakeToggle_Toggled" />
+                                    <StackPanel Spacing="5">
+                                        <TextBlock Text="黑屏前等待" FontWeight="SemiBold" />
+                                        <ComboBox x:Name="AwayDelayCombo" Width="220" HorizontalAlignment="Left" SelectionChanged="AwayDelayCombo_SelectionChanged">
+                                            <ComboBoxItem Content="0 秒（立即）" Tag="0" />
+                                            <ComboBoxItem Content="5 秒" Tag="5" />
+                                            <ComboBoxItem Content="15 秒" Tag="15" />
+                                            <ComboBoxItem Content="30 秒" Tag="30" />
+                                            <ComboBoxItem Content="1 分钟" Tag="60" />
+                                            <ComboBoxItem Content="自定义" Tag="custom" />
+                                        </ComboBox>
+                                        <NumberBox x:Name="AwayCustomDelayBox" Header="自定义秒数（1—3600）" Minimum="1" Maximum="3600"
+                                                   Width="220" HorizontalAlignment="Left" SpinButtonPlacementMode="Compact"
+                                                   Visibility="Collapsed" ValueChanged="AwayCustomDelayBox_ValueChanged"/>
+                                        <TextBlock Text="离开模式不会锁屏，移动鼠标或按键即可恢复。" Opacity="0.84" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="5">
+                                        <TextBlock Text="用量显示" FontWeight="SemiBold" />
+                                        <ComboBox x:Name="UsageModeCombo" Width="220" HorizontalAlignment="Left" SelectionChanged="UsageModeCombo_SelectionChanged">
+                                            <ComboBoxItem Content="已用额度" Tag="Used" />
+                                            <ComboBoxItem Content="剩余额度" Tag="Remaining" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="5">
+                                        <TextBlock Text="账号模式" FontWeight="SemiBold" />
+                                        <ComboBox x:Name="AccountModeCombo" Width="220" HorizontalAlignment="Left" SelectionChanged="AccountModeCombo_SelectionChanged">
+                                            <ComboBoxItem Content="手动切换" Tag="Switch" />
+                                            <ComboBoxItem Content="聚合网关" Tag="AggregateGateway" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="RefreshSettingsHeading" Text="用量与刷新" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,0" />
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="15">
+                                    <ToggleSwitch x:Name="AutoRefreshToggle" Header="自动刷新账号用量" OnContent="已开启" OffContent="已关闭" Toggled="AutoRefreshToggle_Toggled"/>
+                                    <StackPanel Spacing="5"><TextBlock Text="当前账号刷新间隔（秒）" FontWeight="SemiBold"/>
+                                        <NumberBox x:Name="RefreshIntervalBox" Minimum="60" Maximum="7200" SmallChange="30" SpinButtonPlacementMode="Compact" Width="220" HorizontalAlignment="Left" ValueChanged="RefreshIntervalBox_ValueChanged"/>
+                                        <TextBlock Text="其他账号每 5 分钟刷新。关闭自动刷新后仍可手动刷新。" Opacity="0.84" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="5"><TextBlock Text="Token 数字单位" FontWeight="SemiBold"/>
+                                        <ComboBox x:Name="TokenUnitCombo" Width="220" HorizontalAlignment="Left" SelectionChanged="TokenUnitCombo_SelectionChanged">
+                                            <ComboBoxItem Content="中文（万、亿）" Tag="Chinese"/><ComboBoxItem Content="英文（K、M、B）" Tag="Compact"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="5"><TextBlock Text="健康阈值（按 5h / 7d 较高已用比例）" FontWeight="SemiBold"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                            <NumberBox x:Name="WarningThresholdBox" Header="警戒 %" Minimum="1" Maximum="99" Width="150" SpinButtonPlacementMode="Compact" ValueChanged="WarningThresholdBox_ValueChanged"/>
+                                            <NumberBox x:Name="DangerThresholdBox" Header="高负载 %" Minimum="1" Maximum="100" Width="150" SpinButtonPlacementMode="Compact" ValueChanged="DangerThresholdBox_ValueChanged"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="PricingSettingsHeading" Text="Token 费用估算" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="12">
+                                    <ToggleSwitch x:Name="AutoPricingToggle" Header="自动拉取 OpenAI 官方价格" OnContent="已开启" OffContent="已关闭" Toggled="AutoPricingToggle_Toggled"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <NumberBox x:Name="PricingIntervalBox" Header="同步间隔（小时）" Minimum="1" Maximum="168" Value="24" Width="190" SpinButtonPlacementMode="Compact" ValueChanged="PricingIntervalBox_ValueChanged"/>
+                                        <Button Content="立即同步价格" Click="SyncOfficialPricingClicked" VerticalAlignment="Bottom"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="PricingSyncStatusText" Text="尚未同步官方价格" Opacity="0.76" TextWrapping="Wrap"/>
+                                    <StackPanel Spacing="5"><TextBlock Text="定价模型" FontWeight="SemiBold"/><ComboBox x:Name="PricingModelCombo" Width="260" HorizontalAlignment="Left" SelectionChanged="PricingModelCombo_SelectionChanged"/></StackPanel>
+                                    <TextBlock x:Name="PricingSourceText" Text="价格来源：内置" Opacity="0.76"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <NumberBox x:Name="InputPriceBox" Header="输入 US$ / 百万" Minimum="0" Maximum="10000" Width="180" ValueChanged="PriceBox_ValueChanged"/>
+                                        <NumberBox x:Name="CachedPriceBox" Header="缓存输入" Minimum="0" Maximum="10000" Width="180" ValueChanged="PriceBox_ValueChanged"/>
+                                        <NumberBox x:Name="OutputPriceBox" Header="输出" Minimum="0" Maximum="10000" Width="180" ValueChanged="PriceBox_ValueChanged"/>
+                                    </StackPanel>
+                                    <NumberBox x:Name="UsdCnyBox" Header="美元兑人民币估算汇率" Minimum="0.1" Maximum="50" Width="220" ValueChanged="UsdCnyBox_ValueChanged"/>
+                                    <TextBlock Text="费用是按所选单价估算，账单以服务商实际计费为准。" Opacity="0.84" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="ModelSettingsHeading" Text="模型参数" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="5"><TextBlock Text="默认模型" FontWeight="SemiBold"/><ComboBox x:Name="DefaultModelCombo" Width="280" HorizontalAlignment="Left" SelectionChanged="ModelSettingChanged"/></StackPanel>
+                                    <StackPanel Spacing="5"><TextBlock Text="Review 模型" FontWeight="SemiBold"/><ComboBox x:Name="ReviewModelCombo" Width="280" HorizontalAlignment="Left" SelectionChanged="ModelSettingChanged"/></StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <StackPanel Spacing="5"><TextBlock Text="推理强度" FontWeight="SemiBold"/><ComboBox x:Name="ReasoningCombo" Width="180" SelectionChanged="ModelSettingChanged"/></StackPanel>
+                                        <StackPanel Spacing="5"><TextBlock Text="服务等级" FontWeight="SemiBold"/><ComboBox x:Name="ServiceTierCombo" Width="180" SelectionChanged="ModelSettingChanged"/></StackPanel>
+                                    </StackPanel>
+                                    <TextBlock Text="保存后同步到当前 Codex 账号配置；已运行的会话可能需要重启才生效。" Opacity="0.84" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="AppearanceSettingsHeading" Text="外观与托盘" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="托盘图标样式" FontWeight="SemiBold"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <Border CornerRadius="10" Width="56" Height="56" Background="#EDF4FC" BorderBrush="#D3E3F5" BorderThickness="1">
+                                            <Image x:Name="TrayStylePreview" Width="34" Height="34"/>
+                                        </Border>
+                                        <StackPanel Spacing="4"><ComboBox x:Name="TrayStyleCombo" Width="250" SelectionChanged="TrayStyleCombo_SelectionChanged">
+                                            <ComboBoxItem Content="单额度环" Tag="ring"/><ComboBoxItem Content="双额度环" Tag="dual"/>
+                                            <ComboBoxItem Content="剩余数字" Tag="percent"/><ComboBoxItem Content="额度状态灯" Tag="status"/>
+                                            <ComboBoxItem Content="双额度条" Tag="bars"/><ComboBoxItem Content="圆环数字" Tag="ringpercent"/>
+                                            <ComboBoxItem Content="数字横条" Tag="numberbars"/><ComboBoxItem Content="经典图标" Tag="classic"/>
+                                            <ComboBoxItem Content="醒目数字" Tag="badge"/><ComboBoxItem Content="状态点数字" Tag="dotnumber"/>
+                                            <ComboBoxItem Content="深色圆角数字环" Tag="pillring"/>
+                                        </ComboBox><TextBlock x:Name="TrayStyleDescription" FontSize="13" Opacity="0.84" TextWrapping="Wrap"/></StackPanel>
+                                    </StackPanel>
+                                    <TextBlock Text="界面缩放" FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="UiScaleCombo" Width="250" HorizontalAlignment="Left" SelectionChanged="UiScaleCombo_SelectionChanged">
+                                        <ComboBoxItem Content="跟随系统 DPI（推荐）" Tag="0"/><ComboBoxItem Content="100%" Tag="100"/>
+                                        <ComboBoxItem Content="125%" Tag="125"/><ComboBoxItem Content="150%" Tag="150"/>
+                                        <ComboBoxItem Content="175%" Tag="175"/><ComboBoxItem Content="200%" Tag="200"/>
+                                        <ComboBoxItem Content="250%" Tag="250"/><ComboBoxItem Content="300%" Tag="300"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="SystemSettingsHeading" Text="系统集成" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,0" />
+                            <Border CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="14">
+                                    <ToggleSwitch x:Name="StartupToggle" Header="随 Windows 登录启动" Toggled="StartupToggle_Toggled"/>
+                                    <ToggleSwitch x:Name="SystemNotificationsToggle" Header="系统通知（切换、低额度、速蹬、生成、检测与更新）" Toggled="SystemNotificationsToggle_Toggled"/>
+                                    <TextBlock x:Name="SystemNotificationStatusText" Opacity="0.76" TextWrapping="Wrap"/>
+                                    <ToggleSwitch x:Name="AutoUpdateToggle" Header="自动检查正式版更新" Toggled="AutoUpdateToggle_Toggled"/>
+                                    <ToggleSwitch x:Name="SilentUpdateToggle" Header="静默更新（空闲时自动安装并重启托盘）" Toggled="SilentUpdateToggle_Toggled"/>
+                                    <TextBlock Text="有匹配的差分包时优先下载增量；校验失败或无差分包时使用完整包。更新前备份账号与设置。" TextWrapping="Wrap" Opacity="0.7"/>
+                                    <TextBlock x:Name="InstalledVersionText" FontWeight="SemiBold"/>
+                                    <Button Content="检查更新" Click="CheckUpdateClicked" HorizontalAlignment="Left"/>
+                                    <ToggleSwitch x:Name="AdvancedAwakeToggle" Header="高级防休眠：空闲时轻微移动鼠标" Toggled="AdvancedAwakeToggle_Toggled"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <NumberBox x:Name="AwakeIdleBox" Header="空闲阈值（秒）" Minimum="5" Maximum="3600" Width="170" ValueChanged="AdvancedAwakeNumberChanged"/>
+                                        <NumberBox x:Name="AwakeIntervalBox" Header="移动间隔（秒）" Minimum="1" Maximum="600" Width="170" ValueChanged="AdvancedAwakeNumberChanged"/>
+                                        <NumberBox x:Name="AwakeJitterBox" Header="随机抖动（秒）" Minimum="0" Maximum="120" Width="170" ValueChanged="AdvancedAwakeNumberChanged"/>
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="PauseOnFullscreenToggle" Header="全屏应用运行时暂停高级防休眠" Toggled="PauseOnFullscreenToggle_Toggled"/>
+                                    <StackPanel Spacing="5"><TextBlock Text="高级鼠标移动策略" FontWeight="SemiBold"/>
+                                        <ComboBox x:Name="AwakePatternCombo" Width="240" SelectionChanged="AwakePatternCombo_SelectionChanged">
+                                            <ComboBoxItem Content="轻量往返" Tag="ping_pong"/><ComboBoxItem Content="细微随机" Tag="micro_jitter"/>
+                                            <ComboBoxItem Content="小范围游走" Tag="random_walk_box"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <Button Content="打开配置目录" Click="OpenConfigClicked" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </Border>
+                            <Border x:Name="ShortcutSettingsHeading" CornerRadius="14" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="桌面与开始菜单快捷方式" FontWeight="SemiBold" />
+                                    <TextBlock Text="首次启动自动创建。需要修复时，可在这里重新创建。" Opacity="0.84" TextWrapping="Wrap" />
+                                    <Button Content="重新创建快捷方式" Click="CreateShortcutsClicked" HorizontalAlignment="Left" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+                <TextBlock x:Name="StatusText" Grid.Row="2" Text="已加载本地数据" Opacity="0.65" />
+            </Grid>
+        </NavigationView.Content>
+        </NavigationView>
+    </Grid>
+</Window>

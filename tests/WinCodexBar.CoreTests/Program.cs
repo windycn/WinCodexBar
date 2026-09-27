@@ -1,4 +1,5 @@
 using CodexBarWin.Models;
+using CodexBarWin.Interop;
 using CodexBarWin.Services;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -13,10 +14,13 @@ void Reject(Action action, string name) { try { action(); } catch (InvalidDataEx
 try
 {
     var defaults = new CodexBarConfig();
+    Check(defaults.TrayIconStyle == "ringpercent", "new installs default to ring with number tray icon");
     Check(!defaults.KeepAwakeEnabled && !defaults.AdvancedKeepAwakeEnabled, "keep-awake modes are disabled for new installs");
-    Check(defaults.AwayModeDelaySeconds == 5, "away mode starts with a five-second countdown");
+    Check(!defaults.ImageStudioEnabled && !defaults.VectorStudioEnabled && !defaults.QualityCheckEnabled, "creative tools are disabled for new installs");
+    Check(defaults.VectorStudio.Model == "gpt-6-luna" && defaults.VectorStudio.Effort == "low" && defaults.ImageStudio.VectorModel == "gpt-6-luna" && defaults.ImageStudio.VectorEffort == "low", "SVG conversion keeps its original default model and low reasoning");
+    Check(defaults.AwayModeDelaySeconds == 0, "away mode starts with no countdown");
     var settings = new CodexBarConfigStore();
-    settings.Update(c => { c.KeepAwakeEnabled = false; c.AwayModeDelaySeconds = 15; c.AdvancedKeepAwakeEnabled = false; c.StartWithWindows = false; c.AutoCheckUpdates = false; c.UiScalePercent = 200; c.TrayIconStyle = "percent"; c.Global.DefaultModel = "custom-model"; });
+    settings.Update(c => { c.KeepAwakeEnabled = false; c.AwayModeDelaySeconds = 15; c.AdvancedKeepAwakeEnabled = false; c.StartWithWindows = false; c.AutoCheckUpdates = false; c.UiScalePercent = 200; c.TrayIconStyle = "percent"; c.Global.DefaultModel = "custom-model"; c.ImageStudioEnabled = true; c.VectorStudioEnabled = true; c.QualityCheckEnabled = true; });
     AppDataMigration.EnsureVersionBackup();
     AppDataMigration.EnsureVersionBackup();
     Check(Directory.GetDirectories(Path.Combine(CodexPaths.CodexBarRoot,"backups")).Length == 1, "upgrade backup runs once per version");
@@ -24,14 +28,18 @@ try
     Check(!settings.Config.KeepAwakeEnabled && !settings.Config.AdvancedKeepAwakeEnabled && !settings.Config.StartWithWindows && !settings.Config.AutoCheckUpdates, "false settings survive restart");
     Check(settings.Config.AwayModeDelaySeconds == 15, "away delay choice survives restart");
     Check(settings.Config.UiScalePercent == 200 && settings.Config.TrayIconStyle == "percent", "appearance survives restart");
+    Check(settings.Config.ImageStudioEnabled && settings.Config.VectorStudioEnabled && settings.Config.QualityCheckEnabled && settings.Config.Clone().VectorStudioEnabled, "creative tool switches survive restart");
     Check(settings.Config.Global.DefaultModel == "custom-model", "upgrade preserves custom model");
     Check(settings.Config.OpenAI.TokenPricePresets.ContainsKey("gpt-6-astra") && settings.Config.OpenAI.TokenPricePresets["gpt-6-sol"].OutputUsdPerMillion == 10, "GPT-6 presets merged");
     Check(settings.Config.Clone().AwayModeDelaySeconds == 15, "away delay survives settings drafts");
     var clone = settings.Config.Clone(); clone.OpenAI.TokenPricePresets["gpt-6-sol"].OutputUsdPerMillion = 1;
     Check(settings.Config.OpenAI.TokenPricePresets["gpt-6-sol"].OutputUsdPerMillion == 10, "draft pricing isolated");
-    File.WriteAllText(CodexPaths.WindowsSettingsPath, "{\"KeepAwakeEnabled\":false,\"away_mode_delay_seconds\":999,\"openai\":{\"auto_refresh_interval_seconds\":2147483647},\"ui_scale_percent\":-5}");
+    File.WriteAllText(CodexPaths.WindowsSettingsPath, "{\"KeepAwakeEnabled\":false,\"away_mode_delay_seconds\":9999,\"openai\":{\"auto_refresh_interval_seconds\":2147483647},\"ui_scale_percent\":-5}");
     settings.Load();
-    Check(!settings.Config.KeepAwakeEnabled && settings.Config.AwayModeDelaySeconds == 5 && settings.Config.OpenAI.AutoRefreshIntervalSeconds == 86400 && settings.Config.UiScalePercent == 0, "legacy settings and invalid ranges");
+    Check(!settings.Config.KeepAwakeEnabled && settings.Config.AwayModeDelaySeconds == 0 && settings.Config.OpenAI.AutoRefreshIntervalSeconds == 86400 && settings.Config.UiScalePercent == 0, "legacy settings and invalid ranges");
+    File.WriteAllText(CodexPaths.WindowsSettingsPath, "{\"away_mode_delay_seconds\":999}");
+    settings.Load();
+    Check(settings.Config.AwayModeDelaySeconds == 999, "custom away delay survives restart");
     File.WriteAllText(Path.Combine(CodexPaths.CodexRoot,"models_cache.json"), "{\"models\":[{\"slug\":\"gpt-future\",\"supported_reasoning_levels\":[{\"effort\":\"ultra\"}],\"service_tiers\":[{\"id\":\"priority\"}]}]}");
     Check(CodexModelCatalog.Models().Contains("gpt-future") && CodexModelCatalog.Efforts("gpt-future").Contains("ultra"), "local model catalog extends choices");
     Check(CodexModelCatalog.ConfigTier("gpt-future","standard") is null && CodexModelCatalog.ConfigTier("gpt-future","priority") == "fast", "service tier writes supported values only");
@@ -55,6 +63,16 @@ try
     var both = new TokenAccount { PrimaryWindowAvailable = true, SecondaryWindowAvailable = true, PrimaryUsedPercent = 10, SecondaryUsedPercent = 20 };
     Check(AccountUsageHelpers.AverageText(new[] { weekly, both }, UsageDisplayMode.Used) == "5h 10.0% · 7d 31.0%", "averages exclude missing windows");
     Check(AccountUsageHelpers.Windows(new TokenAccount()).Count == 0, "unknown quota is not zero usage");
+    var alerts = new QuotaAlertTracker();
+    var low = new TokenAccount { AccountId = "quota-fixture", PrimaryWindowAvailable = true, PrimaryUsedPercent = 72 };
+    Check(alerts.Evaluate(low, 70, 90).Single().RemainingPercent == 28, "low quota alerts at configured warning threshold");
+    Check(alerts.Evaluate(low, 70, 90).Count == 0, "unchanged low quota does not repeat notification");
+    low.PrimaryUsedPercent = 91;
+    Check(alerts.Evaluate(low, 70, 90).Single().Critical, "critical quota escalation alerts once");
+    low.PrimaryUsedPercent = 3;
+    Check(alerts.Evaluate(low, 70, 90).Count == 0, "quota recovery clears alert level silently");
+    low.PrimaryUsedPercent = 75;
+    Check(alerts.Evaluate(low, 70, 90).Count == 1, "later threshold crossing alerts again");
     Check(AccountUsageHelpers.Windows(JsonSerializer.Deserialize<TokenAccount>(JsonSerializer.Serialize(weekly))!).Single().Label == "7d", "window availability survives restart");
     using var cards = JsonDocument.Parse("""{"available_count":3,"credits":[{"status":"available","expires_at":"2026-10-04T08:00:00Z"},{"status":"redeemed","expires_at":"2026-10-03T08:00:00Z"},{"status":"available","expires_at":null}]}""");
     Check(OpenAIUsageService.ApplyResetCreditPayload(weekly, cards.RootElement), "read-only reset credit data parsed");
@@ -87,6 +105,12 @@ try
     using var closed = JsonDocument.Parse("{\"window_open\":false,\"prediction\":null}");
     Check(CodexRadarService.Parse(closed.RootElement).DisplayText.Contains("未开启"), "explicit closed window supported without prediction");
     Check(CodexRadarPrediction.Loading.DisplayText.Contains("获取中") && CodexRadarPrediction.Unavailable.DisplayText.Contains("暂不可用"), "radar state remains visible without data");
+    var radarAlerts = new CodexRadarAlertTracker();
+    Check(!radarAlerts.Observe(CodexRadarPrediction.Unavailable), "unavailable radar does not trigger alert");
+    Check(radarAlerts.Observe(prediction), "newly opened radar window triggers alert");
+    Check(!radarAlerts.Observe(prediction) && !radarAlerts.Observe(prediction with { IsStale = true }), "repeated and stale radar polls stay quiet");
+    Check(!radarAlerts.Observe(CodexRadarPrediction.Unavailable with { IsAvailable = true, WindowOpen = false }), "closed radar window resets tracker silently");
+    Check(radarAlerts.Observe(prediction), "reopened radar window alerts again");
     using var empty = JsonDocument.Parse("{}"); Check(!CodexRadarService.Parse(empty.RootElement).IsAvailable, "missing radar data unavailable");
     string Release(string tag, string architecture = "x64", bool preview = false) => JsonSerializer.Serialize(new {
         tag_name = tag, draft = false, prerelease = preview,
@@ -100,6 +124,11 @@ try
     Check(AppUpdateService.ParseRelease(Release("v0.3.0", preview:true), new Version(0,2,0), "x64") is null, "prerelease ignored");
     Reject(() => AppUpdateService.ParseRelease(Release("v0.3.0").Replace("https://github.com/", "https://example.test/"), new Version(0,2,0), "x64"), "foreign download rejected");
     Reject(() => AppUpdateService.ParseRelease(Release("v0.3.0"), new Version(0,2,0), "arm64"), "missing architecture rejected");
+    var latestPage = new Uri("https://github.com/windycn/WinCodexBar/releases/tag/v0.3.0");
+    Check(AppUpdateService.ParseLatestReleaseUri(latestPage, new Version(0,2,0), "x64")?.Version == new Version(0,3,0), "public release fallback parses version");
+    Check(AppUpdateService.ParseLatestReleaseUri(latestPage, new Version(0,3,0), "x64") is null, "public release fallback ignores same version");
+    Reject(() => AppUpdateService.ParseLatestReleaseUri(new Uri("https://example.test/windycn/WinCodexBar/releases/tag/v0.3.0"), new Version(0,2,0), "x64"), "public release fallback rejects foreign host");
+    Reject(() => AppUpdateService.ParseLatestReleaseUri(new Uri("https://github.com/other/WinCodexBar/releases/tag/v0.3.0"), new Version(0,2,0), "x64"), "public release fallback rejects foreign repository");
     var zip = Path.Combine(scratch, "test.zip");
     using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create)) { using var writer = new StreamWriter(archive.CreateEntry("WinCodexBar.exe").Open()); writer.Write("fake binary"); }
     var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(zip)));
@@ -110,6 +139,19 @@ try
     Reject(() => AppUpdateService.ExtractPackage(bad, Path.Combine(scratch,"bad")), "zip traversal rejected");
     var script = AppUpdateService.BuildInstallScript("C:\\O'Brien\\package", "C:\\app", "C:\\data", 1234);
     Check(script.Contains("O''Brien") && script.Contains("previous-program") && script.Contains("before-update-"), "installer escapes paths and includes backups");
+    static string Jwt(string json) => "header." + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json)).TrimEnd('=').Replace('+', '-').Replace('/', '_') + ".signature";
+    var importFixture = new TokenAccount
+    {
+        Email = "fixture@example.test", AccountId = "user__acct", OpenAIAccountId = "acct",
+        AccessToken = Jwt("""{"https://api.openai.com/auth":{"chatgpt_account_id":"acct","chatgpt_user_id":"user"},"exp":1900000000}"""),
+        IdToken = Jwt("""{"email":"fixture@example.test"}"""), RefreshToken = "rt-fixture"
+    };
+    var flatExport = OpenAIAccountCSVService.ExportFlatJSON([importFixture]);
+    Check(OpenAIAccountCSVService.Parse(flatExport).Accounts.Single().AccountId == "user__acct", "Codex2API flat JSON import/export roundtrip");
+    var csvExport = OpenAIAccountCSVService.ExportLegacyCSV([importFixture], importFixture.AccountId);
+    Check(OpenAIAccountCSVService.Parse(csvExport).ActiveAccountId == importFixture.AccountId, "legacy CSV import/export roundtrip");
+    var bundleExport = OpenAIAccountCSVService.ExportInteropBundle([importFixture], new Dictionary<string, OAuthAccountInteropMetadata>(), null, importFixture.AccountId);
+    Check(OpenAIAccountCSVService.Parse(bundleExport).Accounts.Single().Email == importFixture.Email, "codexbar JSON remains default compatible format");
     Console.WriteLine($"{passed} checks passed");
 }
 finally { Directory.Delete(scratch, true); }

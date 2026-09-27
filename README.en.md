@@ -1,31 +1,71 @@
 # WinCodexBar
 
-[简体中文](./README.md) · [Download](https://github.com/windycn/WinCodexBar/releases/latest)
+**Codex accounts, usage, and creative tools in your Windows tray.**
 
-A Windows tray workspace for Codex accounts, quotas, model settings, and local usage insights.
+[简体中文](README.md) · [Download v1.0.0](https://github.com/windycn/WinCodexBar/releases/tag/v1.0.0) · [Changelog](CHANGELOG.md)
 
-Version **0.2.1** applies DPI scaling before the first frame, reuses dashboard account rows, and limits tray animation redraws to the refresh icon. Background refresh follows the macOS app: the active account is checked every minute by default (configurable), and all other accounts every five minutes. Keep Awake is off by default and can be toggled from the tray. Away Mode can wait 5, 15, or 30 seconds before showing a black overlay without locking Windows or changing power settings; mouse movement, a key, or a click wakes it while Codex keeps running.
+WinCodexBar is a WinUI 3 workspace for Windows. The tray panel gives you quick access to accounts and quota; the main window adds token activity, session analysis, galleries, and settings. Image generation, editable SVG conversion, and model quality checks are separate features that start disabled.
 
-Automatic update checks run shortly after startup and every six hours. Installation requires confirmation: the app downloads the matching architecture package, verifies SHA256, backs up account/settings files, then replaces program files and restarts. Replacement failures trigger a rollback attempt with retained backups and logs.
+## Screenshots
 
-Download the x64, x86, or arm64 ZIP, extract it to a separate writable folder, and launch `WinCodexBar.exe`. The .NET runtime is included. For the first upgrade from 0.1.x, exit the old version and replace its files manually; subsequent releases can use the new updater.
+These nine screenshots use demo accounts. No real credentials or private gallery files are included.
 
-Account/settings files remain in `%USERPROFILE%\.codexbar` (or beneath `CODEXBAR_HOME`). Version upgrades create backups under `.codexbar\backups`. Update staging, program backups and `result.txt` are under `%LOCALAPPDATA%\WinCodexBar\updates`. Session history is not deleted. Backups and account exports contain credentials and should remain private.
+| Overview and feature switches | Tray panel |
+| --- | --- |
+| ![Overview](docs/screenshots/overview.png) | ![Tray panel](docs/screenshots/tray-panel.png) |
 
-Single-click the tray icon for quick actions; double-click for the dashboard. Appearance settings offer six icon styles: quota ring, dual quota, remaining percentage, status light, bars, and classic. Settings also provide manual update checks. Model availability depends on the account and Codex version; existing selections are preserved.
+| Image studio | Editable SVG |
+| --- | --- |
+| ![Image studio](docs/screenshots/image-studio.png) | ![Editable SVG](docs/screenshots/editable-svg.png) |
 
-Token costs are estimates, not billing records. The public reset-window summary is attributed to [Codex Radar](https://codexradar.com/); it is not evidence that an individual account has reset. Codex Radar’s protected full API is not queried.
+| Token activity | Session analysis |
+| --- | --- |
+| ![Token activity](docs/screenshots/token-activity.png) | ![Session analysis](docs/screenshots/session-analysis.png) |
 
-Build using .NET 8 SDK:
+| Model quality check | Tray styles |
+| --- | --- |
+| ![Model quality check](docs/screenshots/quality-check.png) | ![Tray styles](docs/screenshots/tray-styles.png) |
+
+![System integration and update settings](docs/screenshots/system-settings.png)
+
+## Install
+
+Download the x64, x86, or ARM64 ZIP from [Releases](https://github.com/windycn/WinCodexBar/releases), extract it into a writable folder, and run `WinCodexBar.exe`. Do not launch it from inside the ZIP. The launcher installs the bundled, Microsoft-signed Windows App Runtime when needed. Click the tray icon for the quick panel or double-click it for the main window.
+
+Add an account through OpenAI's official authorization page. You can copy the authorization URL to another device, then paste the callback URL into WinCodexBar. **Restart Codex after switching accounts** for the new account to take effect.
+
+Account data and settings live in `%USERPROFILE%\.codexbar`, or under `CODEXBAR_HOME\.codexbar` when that environment variable is set. Account exports contain usable credentials; store them privately and never publish them.
+
+## Features
+
+- **Accounts and quota:** Save multiple Codex accounts; switch or aggregate them; view five-hour and seven-day quota, reset times, account health, and reset-card expiry when available. Low quota and key reset-window events can trigger deduplicated Windows notifications.
+- **Tray and desktop:** The default tray style is a circular number. Other icon styles, UI scaling, startup shortcuts, notifications, keep-awake behavior, and display-off delay are configurable.
+- **Image studio:** Enable it from the overview, then select one saved Codex account for each request. It runs in a separate WinUI window, with no web server, local reverse proxy, or account pool. Edit or paste prompts, choose models, aspect ratio, resolution, quality, and reasoning level, and request up to ten images. Upload or paste multiple reference images. A shared queue runs up to six image/SVG jobs at once. Local thumbnail cards preserve prompts, model and time; preview full screen, copy images into other apps, or send an image to SVG conversion. Choices persist between launches. Availability depends on the selected account and upstream service.
+- **Editable SVG:** A separate overview switch and window. Convert a newly generated image, one from the gallery, or a locally uploaded/pasted image. Choose the account, text model, reasoning level, and extra instructions. Stronger models can better reproduce complex shapes and details; manual touch-up may still be needed. Results have their own SVG gallery, preview, file-open, and code-copy actions.
+- **Token and sessions:** Daily activity, streaks, peak usage, local session counts, model distribution, recent sessions, and estimated cost. Image, SVG, and quality-check usage is tracked too. Estimates are not an OpenAI invoice.
+- **Model quality checks:** Select an account, model, reasoning level, and preset or custom prompt. Render the resulting HTML in the app and retain the history. A single run is not proof that a model has degraded, and it uses the selected account's quota.
+- **Import and export:** Default to [codexbar](https://github.com/lizhelang/codexbar) JSON. Complete-credential Codex2API JSON and legacy CSV can also be imported; additional export formats are available.
+- **Updates:** Check manually or enable periodic checks and silent updates. Packages are SHA256-verified, with account/settings backup and a full-package fallback when a matching delta is unavailable.
+
+Image and SVG gallery folders can be changed independently. Metadata indexes and trash are kept separately, and incomplete entries can be recovered or cleaned by age.
+
+### Display-off mode
+
+Display-off mode uses Windows' normal idle display-off path while the app keeps the system running. Mouse or keyboard input wakes the display. The delay defaults to zero seconds and can be set to 5, 15, 30, 60, or a custom number of seconds. Windows security policies may still require sign-in after an enforced lock.
+
+## Build
+
+Windows and the .NET 8 SDK are required.
 
 ```powershell
-dotnet build windows/CodexBarWin/CodexBarWin.csproj -c Release
+dotnet build windows/CodexBarWin.WinUI/CodexBarWin.WinUI.csproj -c Release -p:Platform=x64
 dotnet run --project tests/WinCodexBar.CoreTests -c Release
-dotnet run --project tests/WinCodexBar.WindowsTests -c Release
+dotnet run --project tests/GalleryStorageSmoke -c Release
+dotnet run --project tests/TrayIconSmoke -c Release
 ```
 
-Window tests require Windows and use isolated temporary data. Mixed-monitor hot-plug behavior and hardware-specific rendering still need device acceptance testing.
+The release workflow builds x64, x86, and ARM64 ZIP packages, verifies the Microsoft signature on Windows App Runtime, and publishes `SHA256SUMS.txt`.
 
-[MIT License](./LICENSE) · [Third-party notices](./THIRD_PARTY_NOTICES.md)
+## License
 
-Account quota windows are shown only when supplied by the service. Weekly-only accounts have no five-hour placeholder, and the tray indicator uses weekly usage. Reset-credit counts and individual expiration times are read-only; account details show exact reset dates, seconds, and local UTC offsets. There is no redemption action or endpoint.
+[MIT](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)

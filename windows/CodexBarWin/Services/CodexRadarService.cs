@@ -38,7 +38,9 @@ public sealed record CodexRadarPrediction(
             {
                 var state = WindowOpen.Value ? "速蹬窗口开启" : "重置窗口未开启";
                 var time = WindowOpen.Value && WindowOpenedAt.HasValue ? $" · {WindowOpenedAt.Value.ToOffset(TimeSpan.FromHours(8)):M月d日 HH:mm} 北京时间" : "";
-                return $"{(IsStale ? "缓存 · " : "")}{state}{time} · Codex 雷达";
+                var expected = !WindowOpen.Value && !string.IsNullOrWhiteSpace(ExpectedWindow)
+                    ? $" · {ExpectedWindow}" : "";
+                return $"{(IsStale ? "缓存 · " : "")}{state}{time}{expected} · Codex 雷达";
             }
             if (UpdatedAt is null || DateTimeOffset.UtcNow - UpdatedAt > TimeSpan.FromDays(3))
                 return "旧预测已过期 · 查看 Codex 雷达";
@@ -75,6 +77,20 @@ public sealed record CodexRadarPrediction(
 
         var percent = value.Value <= 1d ? value.Value * 100d : value.Value;
         parts.Add($"{label} {percent.ToString("F0", CultureInfo.InvariantCulture)}%");
+    }
+}
+
+/// <summary>Remember the last reliable window state so repeated polls do not repeat a toast.</summary>
+public sealed class CodexRadarAlertTracker
+{
+    private bool _wasOpen;
+
+    public bool Observe(CodexRadarPrediction prediction)
+    {
+        if (!prediction.IsAvailable || prediction.IsStale || prediction.WindowOpen is null) return false;
+        var openedNow = prediction.WindowOpen.Value && !_wasOpen;
+        _wasOpen = prediction.WindowOpen.Value;
+        return openedNow;
     }
 }
 

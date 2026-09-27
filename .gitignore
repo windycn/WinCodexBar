@@ -57,7 +57,10 @@ windows/*.json
 codexBar/
 codexbar.xcodeproj/
 codexBarTests/
-docs/
+docs/*
+!docs/screenshots/
+docs/screenshots/*
+!docs/screenshots/*.png
 register/
 release-feed/
 git_updates.md

@@ -43,15 +43,20 @@ public sealed class CodexBarConfigStore
             config.KeepAwakeEnabled = ReadBool(root, "keep_awake_enabled",
                 ReadBool(root, "KeepAwakeEnabled", config.KeepAwakeEnabled));
             var awayModeDelay = ReadInt(root, "away_mode_delay_seconds", config.AwayModeDelaySeconds);
-            config.AwayModeDelaySeconds = awayModeDelay is 5 or 15 or 30 ? awayModeDelay : 5;
+            config.AwayModeDelaySeconds = awayModeDelay is >= 0 and <= 3600 ? awayModeDelay : 0;
             config.AdvancedKeepAwakeEnabled = ReadBool(root, "advanced_keep_awake_enabled", config.AdvancedKeepAwakeEnabled);
             config.AutoCheckUpdates = ReadBool(root, "auto_check_updates", true);
+            config.SilentUpdates = ReadBool(root, "silent_updates", false);
+            config.SystemNotificationsEnabled = ReadBool(root, "system_notifications_enabled", true);
+            config.ImageStudioEnabled = ReadBool(root, "image_studio_enabled", false);
+            config.VectorStudioEnabled = ReadBool(root, "vector_studio_enabled", false);
+            config.QualityCheckEnabled = ReadBool(root, "quality_check_enabled", false);
             var uiScale = ReadInt(root, "ui_scale_percent", 0);
             config.UiScalePercent = uiScale is 100 or 125 or 150 or 175 or 200 or 250 or 300 ? uiScale : 0;
             if (root.TryGetProperty("tray_icon_style", out var trayStyle) && trayStyle.ValueKind == JsonValueKind.String)
             {
                 var style = trayStyle.GetString();
-                config.TrayIconStyle = style is "ring" or "dual" or "percent" or "status" or "bars" or "classic" ? style : "ring";
+                config.TrayIconStyle = style is "ring" or "dual" or "percent" or "status" or "bars" or "ringpercent" or "numberbars" or "badge" or "dotnumber" or "pillring" or "classic" ? style : config.TrayIconStyle;
             }
 
             config.AdvancedKeepAwakeIdleThresholdMs = ReadInt(root, "advanced_keep_awake_idle_threshold_ms", config.AdvancedKeepAwakeIdleThresholdMs);
@@ -81,10 +86,35 @@ public sealed class CodexBarConfigStore
                                 ?? new CodexBarGlobalSettings();
             }
 
+            if (root.TryGetProperty("image_studio", out var imageStudioNode))
+                config.ImageStudio = JsonSerializer.Deserialize<ImageStudioPreferences>(imageStudioNode.GetRawText())
+                                     ?? new ImageStudioPreferences();
+
+            if (root.TryGetProperty("vector_studio", out var vectorStudioNode))
+                config.VectorStudio = JsonSerializer.Deserialize<VectorStudioPreferences>(vectorStudioNode.GetRawText())
+                                      ?? new VectorStudioPreferences();
+
+            config.ImageGalleryPath = ReadString(root, "image_gallery_path") ?? string.Empty;
+            config.SvgGalleryPath = ReadString(root, "svg_gallery_path") ?? string.Empty;
+
+            if (root.TryGetProperty("quality_check", out var qualityCheckNode))
+                config.QualityCheck = JsonSerializer.Deserialize<QualityCheckPreferences>(qualityCheckNode.GetRawText())
+                                      ?? new QualityCheckPreferences();
+
             if (root.TryGetProperty("openai", out var openAINode))
             {
                 config.OpenAI = JsonSerializer.Deserialize<CodexBarOpenAISettings>(openAINode.GetRawText())
                                 ?? new CodexBarOpenAISettings();
+                // 旧设置没有价格来源字段；与当时内置价不同的条目按手动价格保留。
+                var defaults = TokenPricePreset.CreateDefaults();
+                foreach (var (model, preset) in config.OpenAI.TokenPricePresets)
+                {
+                    if (preset.Source != "built_in" || !defaults.TryGetValue(model, out var fallback)) continue;
+                    if (preset.InputUsdPerMillion != fallback.InputUsdPerMillion ||
+                        preset.CachedInputUsdPerMillion != fallback.CachedInputUsdPerMillion ||
+                        preset.OutputUsdPerMillion != fallback.OutputUsdPerMillion)
+                        preset.Source = "custom";
+                }
             }
 
             // 校验阈值
@@ -132,6 +162,10 @@ public sealed class CodexBarConfigStore
     private static bool ReadBool(JsonElement root, string key, bool fallback) =>
         root.TryGetProperty(key, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.GetBoolean() : fallback;
+
+    private static string? ReadString(JsonElement root, string key) =>
+        root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() : null;
 
     private static double ClampPercent(double value, double fallback)
     {

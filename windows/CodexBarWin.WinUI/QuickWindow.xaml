@@ -1,0 +1,153 @@
+<Window x:Class="CodexBarWin.WinUI.QuickWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="WinCodexBar 速览">
+    <Window.SystemBackdrop><DesktopAcrylicBackdrop /></Window.SystemBackdrop>
+    <Grid Padding="16,14,16,14" RowSpacing="9" Background="#F5F7FBFF">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid RowSpacing="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="WinCodexBar" FontSize="23" FontWeight="SemiBold"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <Button x:Name="RefreshButton" Click="RefreshClicked" Width="34" Height="32" MinHeight="32" Padding="0" ToolTipService.ToolTip="刷新所有账号用量"><Viewbox x:Name="RefreshGlyph" Width="15" Height="15" Stretch="Uniform"><SymbolIcon Symbol="Refresh"/></Viewbox></Button>
+                <Button Click="CloseClicked" Width="34" Height="32" MinHeight="32" Padding="0" ToolTipService.ToolTip="关闭速览"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Cancel"/></Viewbox></Button>
+            </StackPanel>
+            <TextBlock x:Name="CurrentAccountText" Grid.Row="1" Grid.ColumnSpan="2" FontSize="15" TextTrimming="CharacterEllipsis"/>
+            <HyperlinkButton x:Name="RadarButton" Grid.Row="2" Grid.ColumnSpan="2" Padding="0" MinHeight="22" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Click="RadarClicked" ToolTipService.ToolTip="打开 Codex Radar">
+                <TextBlock x:Name="RadarText" Text="重置窗口 · 获取中 · Codex 雷达" FontSize="14"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold"
+                    TextWrapping="WrapWholeWords" TextTrimming="CharacterEllipsis" MaxLines="2"/>
+            </HyperlinkButton>
+        </Grid>
+        <Border x:Name="HeroCard" Grid.Row="1" CornerRadius="14" Padding="12" BorderThickness="1"
+            BorderBrush="#C9DBEC">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#FEFFFFFF" Offset="0"/>
+                    <GradientStop Color="#F1F7FE" Offset="0.55"/>
+                    <GradientStop Color="#EAF3FE" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <StackPanel Spacing="5">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Border CornerRadius="8" Width="52" Height="27" Background="#E4F1FE">
+                            <TextBlock Text="OpenAI" Foreground="#005FAF" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock x:Name="CurrentPlanText" Text="订阅" FontSize="16" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="#E8EEF5" Padding="2" CornerRadius="10">
+                        <StackPanel Orientation="Horizontal" Spacing="0">
+                            <Button x:Name="ManualModeButton" Click="ManualModeClicked" Width="56" Height="30" MinHeight="30" Padding="0" CornerRadius="8" BorderThickness="0" HorizontalContentAlignment="Center"><TextBlock x:Name="ManualModeLabel" Text="手动" FontSize="13" FontWeight="SemiBold"/></Button>
+                            <Button x:Name="AggregateModeButton" Click="AggregateModeClicked" Width="56" Height="30" MinHeight="30" Padding="0" CornerRadius="8" BorderThickness="0" HorizontalContentAlignment="Center"><TextBlock x:Name="AggregateModeLabel" Text="聚合" FontSize="13" FontWeight="SemiBold"/></Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <TextBlock x:Name="CurrentUsageText" Text="添加账号后显示额度" FontSize="15" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="CurrentResetText" FontSize="13" Opacity="0.82" TextTrimming="CharacterEllipsis"/>
+                <Grid ColumnSpacing="5">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Border CornerRadius="5" Padding="7,5" Background="{ThemeResource SubtleFillColorSecondaryBrush}"><Grid><TextBlock Text="今日" FontSize="13"/><TextBlock x:Name="TodayTokensText" HorizontalAlignment="Right" FontSize="13" FontWeight="SemiBold" Text="0"/></Grid></Border>
+                    <Border Grid.Column="1" CornerRadius="5" Padding="7,5" Background="{ThemeResource SubtleFillColorSecondaryBrush}"><Grid><TextBlock Text="本周" FontSize="13"/><TextBlock x:Name="WeekTokensText" HorizontalAlignment="Right" FontSize="13" FontWeight="SemiBold" Text="0"/></Grid></Border>
+                    <Border Grid.Column="2" CornerRadius="5" Padding="7,5" Background="{ThemeResource SubtleFillColorSecondaryBrush}"><Grid><TextBlock Text="本月" FontSize="13"/><TextBlock x:Name="MonthTokensText" HorizontalAlignment="Right" FontSize="13" FontWeight="SemiBold" Text="0"/></Grid></Border>
+                </Grid>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <StackPanel Spacing="3">
+                        <Grid Height="9"><Border Background="#D9E2EC" CornerRadius="5"/>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition x:Name="PrimaryFillColumn" Width="0*"/><ColumnDefinition x:Name="PrimaryRestColumn" Width="100*"/></Grid.ColumnDefinitions>
+                                <Border x:Name="PrimaryProgressFill" CornerRadius="5" Background="#00804E"/></Grid>
+                        </Grid><TextBlock Text="5 小时" FontSize="12" Opacity="0.8"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="3">
+                        <Grid Height="9"><Border Background="#D9E2EC" CornerRadius="5"/>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition x:Name="SecondaryFillColumn" Width="0*"/><ColumnDefinition x:Name="SecondaryRestColumn" Width="100*"/></Grid.ColumnDefinitions>
+                                <Border x:Name="SecondaryProgressFill" CornerRadius="5" Background="#00804E"/></Grid>
+                        </Grid><TextBlock Text="7 天" FontSize="12" Opacity="0.8"/>
+                    </StackPanel>
+                </Grid>
+                <HyperlinkButton x:Name="CreditDetailsButton" Content="重置卡 · 查看详情" Click="CreditDetailsClicked" Padding="0" MinHeight="24" HorizontalAlignment="Left" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+            </StackPanel>
+        </Border>
+        <Grid Grid.Row="2" ColumnSpacing="8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="账号信息" FontSize="17" FontWeight="SemiBold"/>
+                <TextBlock x:Name="AccountHealthText" FontSize="13" VerticalAlignment="Center" Opacity="0.8"/>
+            </StackPanel>
+            <TextBlock x:Name="AccountCountText" Grid.Column="1" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        </Grid>
+        <Grid Grid.Row="3">
+            <StackPanel x:Name="EmptyState" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed">
+                <TextBlock Text="还没有账号" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock Text="添加账号后，这里会显示额度和刷新状态。" FontSize="14" Opacity="0.8" HorizontalAlignment="Center"/>
+                <Button Content="添加账号" Click="AddClicked" Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Center" CornerRadius="9"/>
+            </StackPanel>
+            <ListView x:Name="AccountList" SelectionMode="None" HorizontalContentAlignment="Stretch" Background="Transparent" Padding="0" BorderThickness="0">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0"/>
+                        <Setter Property="MinHeight" Value="0"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate><DataTemplate>
+                    <Border Margin="0,0,0,6" Padding="10,7" CornerRadius="10" BorderThickness="1" ToolTipService.ToolTip="{Binding ResetCardTooltip}"
+                        Background="{Binding CardBackground}" BorderBrush="{Binding CardBorder}">
+                        <Grid ColumnSpacing="5" RowSpacing="3">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="51"/><ColumnDefinition Width="51"/><ColumnDefinition Width="51"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="23"/><RowDefinition Height="34"/><RowDefinition Height="20"/></Grid.RowDefinitions>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="9"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Ellipse Width="8" Height="8" Fill="{Binding HealthBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            </Grid>
+                            <TextBlock Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding Plan}" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Row="1" Text="{Binding Usage}" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button Grid.Row="1" Grid.Column="1" Content="{Binding SwitchLabel}" IsEnabled="{Binding CanSwitch}" Height="32" MinHeight="32" Padding="0" FontSize="16" FontWeight="SemiBold" CornerRadius="7" BorderThickness="0" Background="Transparent" Foreground="#005FAF" Click="SwitchClicked"/>
+                            <Button Grid.Row="1" Grid.Column="2" Content="刷新" Height="32" MinHeight="32" Padding="0" FontSize="16" CornerRadius="7" BorderThickness="0" Background="Transparent" Foreground="#245477" Click="AccountRefreshClicked"/>
+                            <Button Grid.Row="1" Grid.Column="3" Content="删除" Height="32" MinHeight="32" Padding="0" FontSize="16" CornerRadius="7" BorderThickness="0" Background="Transparent" Foreground="#AD3546" Click="AccountDeleteClicked"/>
+                            <TextBlock Grid.Row="2" Grid.ColumnSpan="4" Text="{Binding ShortReset}" FontSize="12" Opacity="0.8" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate></ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+        <StackPanel Grid.Row="4" Spacing="6">
+            <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            <Grid ColumnSpacing="6">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button Click="DetailsClicked" HorizontalAlignment="Stretch" Padding="4,3"><StackPanel Orientation="Horizontal" Spacing="5"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="ViewAll"/></Viewbox><TextBlock Text="会话分析" FontSize="13"/></StackPanel></Button>
+                <Button x:Name="KeepAwakeButton" Grid.Column="1" Click="KeepAwakeClicked" HorizontalAlignment="Stretch" Padding="4,3"><StackPanel Orientation="Horizontal" Spacing="5"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="View"/></Viewbox><TextBlock x:Name="KeepAwakeLabel" Text="开启唤醒" FontSize="13"/></StackPanel></Button>
+                <Button Grid.Column="2" Click="AwayClicked" Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch" Padding="4,3" CornerRadius="9"><StackPanel Orientation="Horizontal" Spacing="5"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Stop"/></Viewbox><TextBlock Text="黑屏离开" FontSize="13"/></StackPanel></Button>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="黑屏前等待" FontSize="13" VerticalAlignment="Center"/>
+                <Button x:Name="Delay0Button" Content="0 秒" Click="Delay0Clicked" MinHeight="26" Padding="7,1" FontSize="12" CornerRadius="8"/>
+                <Button x:Name="Delay5Button" Content="5 秒" Click="Delay5Clicked" MinHeight="26" Padding="7,1" FontSize="12" CornerRadius="8"/>
+                <Button x:Name="Delay15Button" Content="15 秒" Click="Delay15Clicked" MinHeight="26" Padding="7,1" FontSize="12" CornerRadius="8"/>
+                <Button x:Name="Delay30Button" Content="30 秒" Click="Delay30Clicked" MinHeight="26" Padding="7,1" FontSize="12" CornerRadius="8"/>
+                <Button x:Name="Delay60Button" Content="1 分钟" Click="Delay60Clicked" MinHeight="26" Padding="7,1" FontSize="12" CornerRadius="8"/>
+                <Button x:Name="CustomDelayButton" Content="自定义…" Click="CustomDelayClicked" MinHeight="26" Padding="7,1" FontSize="12" CornerRadius="8"/>
+            </StackPanel>
+            <Grid ColumnSpacing="5">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button Click="HomeClicked" HorizontalAlignment="Stretch" Padding="2,3"><StackPanel Orientation="Horizontal" Spacing="2"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Home"/></Viewbox><TextBlock Text="首页" FontSize="12"/></StackPanel></Button>
+                <Button Grid.Column="1" Click="AddClicked" HorizontalAlignment="Stretch" Padding="2,3" ToolTipService.ToolTip="通过 OpenAI 官方登录授权添加账号；可复制授权链接并在其他设备浏览器完成登录。"><StackPanel Orientation="Horizontal" Spacing="2"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Add"/></Viewbox><TextBlock Text="添加" FontSize="12"/></StackPanel></Button>
+                <Button Grid.Column="2" Click="ImportClicked" HorizontalAlignment="Stretch" Padding="2,3" ToolTipService.ToolTip="从账号文件导入。默认支持 codexbar JSON，也支持兼容的 CSV 或 Codex2API JSON。"><StackPanel Orientation="Horizontal" Spacing="2"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Import"/></Viewbox><TextBlock Text="导入" FontSize="12"/></StackPanel></Button>
+                <Button Grid.Column="3" Click="ExportClicked" HorizontalAlignment="Stretch" Padding="2,3" ToolTipService.ToolTip="将账号导出为文件，用于备份或迁移。文件包含可用凭据，请妥善保存。"><StackPanel Orientation="Horizontal" Spacing="2"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Upload"/></Viewbox><TextBlock Text="导出" FontSize="12"/></StackPanel></Button>
+                <Button Grid.Column="4" Click="SettingsClicked" HorizontalAlignment="Stretch" Padding="2,3"><StackPanel Orientation="Horizontal" Spacing="2"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="Setting"/></Viewbox><TextBlock Text="设置" FontSize="12"/></StackPanel></Button>
+                <Button Grid.Column="5" Click="ExitClicked" HorizontalAlignment="Stretch" Padding="2,3"><StackPanel Orientation="Horizontal" Spacing="2"><Viewbox Width="13" Height="13" Stretch="Uniform"><SymbolIcon Symbol="LeaveChat"/></Viewbox><TextBlock Text="退出" FontSize="12"/></StackPanel></Button>
+            </Grid>
+            <Button x:Name="ImageStudioQuickButton" Content="打开生图工作台" Click="ImageStudioClicked" HorizontalAlignment="Stretch" Padding="4,3" FontSize="13"/>
+        </StackPanel>
+    </Grid>
+</Window>

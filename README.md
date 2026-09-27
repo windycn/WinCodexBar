@@ -1,81 +1,84 @@
 # WinCodexBar
 
-[English](./README.en.md) · [下载最新版](https://github.com/windycn/WinCodexBar/releases/latest) · [更新记录](./CHANGELOG.md)
+**把 Codex 账号、额度和创作工具放进 Windows 托盘。**
 
-Windows 上的 Codex 托盘工作台：管理多账号、查看额度、切换模型、分析本地用量。
+[English](README.en.md) · [下载 v1.0.0](https://github.com/windycn/WinCodexBar/releases/tag/v1.0.0) · [更新记录](CHANGELOG.md)
 
-## 0.2.1 有什么变化
+WinCodexBar 是 Windows 上的 WinUI 3 工作台。日常用托盘速览额度和切换账号，需要时打开主界面查看 Token、会话、图库和设置。生图、转可编辑 SVG、模型质量检测分别按需开启，首次安装默认关闭。
 
-- **界面更顺畅**：初次显示前完成 DPI 缩放，刷新账号时复用已有行控件；托盘刷新动画只重绘图标区域，工作台背景渐变复用缓存。
-- **后台刷新节奏**：当前账号默认每分钟检查（可调整间隔），其他账号每 5 分钟检查一次，与 macOS 版一致；联网请求在后台并发执行。
-- **屏幕适配**：默认跟随当前显示器 DPI；也可选择 100%–300% 手动缩放。窗口限制在屏幕工作区内，窄屏设置卡片上下排列，超出内容可滚动。
-- **字体与图标**：随包提供中文无衬线字体与 Microsoft Fluent UI System Icons，减少系统字体缺失引起的回退和字形差异。窄屏导航自动收起为分类下拉框，设置页无横向滚动。
-- 重置卡只读展示剩余次数、各张到期时间；账号详情显示精确额度重置日期、时间与时区。不提供使用或兑换重置卡的功能。
-- 额度按账号实际提供的窗口显示；没有 5 小时额度时只显示 7 天额度，托盘图标同步使用 7 天数据。缺失数据与真实 0% 分开处理。
-- **托盘样式**：额度圆环、双额度、剩余百分比、状态灯、柱状图、经典应用图标六种样式。单击立即打开快捷面板，双击打开工作台；Esc 收起面板。
-- **离开模式**：保持唤醒默认关闭，可从托盘快捷开关。黑屏离开模式可等待 5、15 或 30 秒再启动，仅覆盖显示画面，不锁屏、不改电源设置；鼠标移动、按键或点击即可恢复，Codex 和后台任务继续运行。
-- **交互修复**：删除确认不再被外部点击检测误关；滚动后的隐藏账号区域不再响应点击；打开设置、查看统计与关闭面板按顺序执行。
-- **更新更方便**：启动后和每 6 小时自动检查正式版，也可手动检查。用户确认后下载对应架构包、校验 SHA256、备份数据、覆盖程序并重启。覆盖失败尝试回滚，保留日志与旧程序备份。
-- **模型**：内置 GPT-6 Astra / Sol / Luna，并合并本机 Codex 模型缓存中的模型、推理强度与服务档位。支持手填模型 ID，升级保留已有选择。
-- **重置窗口**：读取 CodexRadar 公开摘要中的当前窗口状态，旧预测不会盖过已开启的窗口。显示来源，点击可查看网站；这不是个人账号已重置的证明。
+## 界面一览
 
-## 下载与运行
+以下九张截图由演示账号拍摄；仓库不包含真实账号、登录凭据或私人图库文件。
 
-在 [Releases](https://github.com/windycn/WinCodexBar/releases/latest) 下载与你的系统匹配的 ZIP：
-
-| 安装包 | 适用设备 |
+| 总览与功能开关 | 托盘速览 |
 | --- | --- |
-| `WinCodexBar-0.2.1-win-x64.zip` | Intel / AMD 64 位 Windows |
-| `WinCodexBar-0.2.1-win-arm64.zip` | Windows on ARM |
-| `WinCodexBar-0.2.1-win-x86.zip` | 32 位 Windows |
+| ![总览](docs/screenshots/overview.png) | ![托盘面板](docs/screenshots/tray-panel.png) |
 
-解压到独立、可写的文件夹，运行 `WinCodexBar.exe`。发布包自带 .NET 运行时。不要直接在 ZIP 内运行；自动更新需要对程序目录有写入权限。
+| 生图工作台 | 转可编辑 SVG |
+| --- | --- |
+| ![生图工作台](docs/screenshots/image-studio.png) | ![转可编辑 SVG](docs/screenshots/editable-svg.png) |
 
-首次从 0.1.x 升级：先退出旧程序，再解压覆盖或运行新目录中的程序。旧版没有自动更新入口，升级到 0.2.0 后即可使用。程序只允许一个实例运行。
+| Token 活动 | 会话分析 |
+| --- | --- |
+| ![Token 活动](docs/screenshots/token-activity.png) | ![会话分析](docs/screenshots/session-analysis.png) |
 
-## 日常使用
+| 模型质量检测 | 托盘样式 |
+| --- | --- |
+| ![模型质量检测](docs/screenshots/quality-check.png) | ![托盘样式设置](docs/screenshots/tray-styles.png) |
 
-- **托盘**：查看当前账号的 5 小时 / 7 天额度、重置时间，刷新或切换账号。
-- **工作台**：添加、导入、导出、切换、删除账号；查看 Token 活动和本地会话分析。
-- **设置 → 外观与缩放**：自动 / 手动缩放、托盘样式，保存后生效。
-- **设置 → 唤醒与更新**：保持唤醒、高级防休眠、开机启动、自动检查与手动检查更新。
-- **设置 → 模型参数**：默认模型、Review 模型、推理强度和服务等级。模型实际可用性由账号与 Codex 版本决定。
-- **设置 → 账号设置**：手动模式 / 聚合模式。手动切换同步登录配置；已运行的 Codex 通常需要重启或新开实例。聚合模式把后续请求交给本地账号网关，正在运行的响应流不被中途切换。
+![系统集成与更新设置](docs/screenshots/system-settings.png)
 
-关闭工作台会收回托盘；彻底退出请使用托盘菜单的“退出”。高级防休眠会模拟轻微鼠标移动，可单独关闭。
+## 安装与开始使用
 
-## 更新、数据与备份
+1. 到 [Releases](https://github.com/windycn/WinCodexBar/releases) 下载对应架构的 `WinCodexBar-1.0.0-win-x64.zip`、`win-x86.zip` 或 `win-arm64.zip`。
+2. 解压到独立、可写的文件夹，运行 `WinCodexBar.exe`。不要直接从压缩包里运行。首次启动时，启动器会按需安装随包提供、经微软签名的 Windows App Runtime。
+3. 在托盘单击图标打开速览面板，双击打开 WinUI 工作台。通过“添加账号”前往 OpenAI 官方授权；授权链接可复制到别的设备打开，再把回调链接粘贴回来。
 
-账号与设置保存在 `%USERPROFILE%\.codexbar`，不在程序目录；设置 `CODEXBAR_HOME` 时使用该目录下的 `.codexbar`。升级保留旧模型、价格和外观设置，补充缺失的新字段。
+账号切换后，**重启 Codex 才会应用新账号**。WinCodexBar 会在切换时提醒。账号和设置保存在 `%USERPROFILE%\.codexbar`；设置 `CODEXBAR_HOME` 后，数据改存于该目录下的 `.codexbar`。
 
-- 每个新版本首次启动，在 `.codexbar\backups\before-版本-时间` 备份现有账号与设置。
-- 自动覆盖更新前，另行备份到 `.codexbar\backups\before-update-时间`。
-- 更新包及程序回滚备份保存在 `%LOCALAPPDATA%\WinCodexBar\updates\随机目录`，内有 `result.txt` 和 `previous-program`。
-- 覆盖失败会尝试恢复被修改文件；若目录权限或文件占用阻止恢复，可退出应用后从 `previous-program` 手动还原。自动回滚针对文件替换失败，不等同于检测新版本的全部运行问题。
-- 恢复账号或设置时，先退出程序，再将备份中的 JSON 放回 `.codexbar`。备份和导出文件含登录凭证，不要公开分享。
-- 更新与删除账号不会删除 `.codex\sessions` 或 `.codex\archived_sessions`。删除账号仅从 WinCodexBar 账号池移除，不代表撤销远端登录或清除其他客户端的登录状态。
+### 账号与额度
 
-自动检查只读取本仓库公开 Release 元数据，不上传账号或会话。发现新版本会通知，**不会未经确认自动安装**。网络不可用时继续使用当前版本。
+- 保存多个 Codex 账号，手动切换或聚合查看；刷新 5 小时和 7 天额度、重置时间与账号状态。鼠标悬停账号时，有重置卡才显示其到期时间。
+- 托盘默认使用圆环数字样式，可在设置中预览并切换其他样式。额度低于设定阈值、重置窗口开启等关键事件可发 Windows 通知，并避免重复提醒。
+- 导入默认支持 [codexbar](https://github.com/lizhelang/codexbar) JSON，也支持包含完整 OAuth 凭据的 Codex2API JSON 和旧版 CSV；导出默认是 codexbar JSON，也可选择其他格式。**导出文件含可使用账号的凭据，请妥善保存，勿公开上传。**
 
-## 统计与信息来源
+### 生图工作台
 
-Token 活动来自本地 Codex 会话文件；金额是按所选价格预设计算的估值，不是账单，也不能反推订阅额度。GPT-6 内置价格采用标准短上下文价格，不包含 Fast、长上下文、缓存写入等附加规则。
+在总览开启后，从左侧导航或托盘进入。工作台是独立 WinUI 窗口，**不启动网页服务、不运行反向代理或号池**；每次明确选定一个已保存的 Codex 账号。能否生图取决于该账号及上游接口的可用性。
 
-模型资料：[OpenAI 模型目录](https://developers.openai.com/api/docs/models)。重置窗口数据来自 [Codex 雷达 codexradar.com](https://codexradar.com/) 的公开摘要，三分钟缓存；完整 API 需站方授权，本程序不请求受保护的完整接口。
+编辑、粘贴提示词，选择执行模型、生图模型、画幅、分辨率、质量与思考强度；一次生成 1–10 张。可上传多张参考文件，也可从剪贴板粘贴参考图。任务显示排队、运行及结果，图片和 SVG 任务合计最多并行 6 项。结果以缩略图卡片保存在本机图库，记录提示词、模型、时间等信息；可以按时间查看、全屏预览、复制图片并粘贴到 Word 或 PowerPoint，也可以直接送往“转可编辑 SVG”。模型等选择会记住上次设置。
 
-## 构建与验证
+### 转可编辑 SVG
 
-需要 .NET 8 SDK。Windows 可运行完整窗口回归；其他系统可交叉编译 Windows 程序并运行核心回归。
+此功能有独立的总览开关和窗口。可从生图图库选历史或刚生成的图片，也可上传、粘贴本机图片。为本次转换单独选择 Codex 账号、文本模型、思考强度及补充要求。**复杂图片使用更强的模型，通常能更准确地重绘轮廓与细节**；结果仍可能需要手工调整。转换成果单独保存到 SVG 图库，可全屏预览、打开 SVG 文件及复制 SVG 代码。
+
+生图与 SVG 图库目录均可自定义。图片、索引元数据和回收站分开存放；不完整或失配文件进入回收站，可手动或按保留天数清理。
+
+### 统计与检测
+
+“Token 活动”按日展示用量、连续活跃、峰值和费用估算；“会话分析”查看会话数量、模型分布与最近会话。生图、SVG 和模型质量检测也记录各自的消耗。费用根据公开模型价格估算，**不是官方账单**。
+
+模型质量检测可选账号、模型、思考强度和多种预设题，也能保存自己的题目。生成的 HTML 结果直接渲染并留存历史。单次结果只供比较，不能据此判定模型已降级；检测会消耗所选账号的额度。
+
+### 托盘、黑屏与系统集成
+
+托盘速览提供账号操作、保持唤醒、黑屏离开、会话入口和快捷设置。“黑屏离开”通过 Windows 的空闲关屏路径关闭显示器，后台程序继续运行；鼠标或键盘输入可恢复画面。默认等待 0 秒，也有 5、15、30、60 秒和自定义等待。黑屏期间应用会保持系统运行，但 Windows 自身的强制锁屏策略仍由系统决定。
+
+设置中可选启动项、通知、外观缩放、托盘图标和桌面/开始菜单快捷方式。更新页面显示当前版本，可手动检查，也可启用自动检查与静默更新。更新器校验 SHA256、备份账号和设置，再替换程序；如果发布了适用的差分包会优先尝试，失败则使用完整包。
+
+## 开发与验证
+
+需要 Windows 与 .NET 8 SDK。
 
 ```powershell
-dotnet build windows/CodexBarWin/CodexBarWin.csproj -c Release
+dotnet build windows/CodexBarWin.WinUI/CodexBarWin.WinUI.csproj -c Release -p:Platform=x64
 dotnet run --project tests/WinCodexBar.CoreTests -c Release
-dotnet run --project tests/WinCodexBar.WindowsTests -c Release
-dotnet publish windows/CodexBarWin/CodexBarWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet run --project tests/GalleryStorageSmoke -c Release
+dotnet run --project tests/TrayIconSmoke -c Release
 ```
 
-Windows 回归覆盖设置卡片、手动缩放、窗口开关、删除确认和真实 PowerShell 更新脚本。测试使用临时数据目录与虚构账号，不连接真实账号。多台实体显示器之间的热插拔、不同显卡与 Windows 主题仍建议在实际设备上验收。
+发布工作流构建 x64、x86、ARM64，验证 Windows App Runtime 的微软签名，生成 ZIP 与 `SHA256SUMS.txt`。账号导出、图库与截图请在提交前检查，避免把私人资料加入仓库。
 
-## License
+## 许可
 
-[MIT](./LICENSE) · [第三方组件声明](./THIRD_PARTY_NOTICES.md)
+[MIT](LICENSE) · [第三方组件声明](THIRD_PARTY_NOTICES.md)
