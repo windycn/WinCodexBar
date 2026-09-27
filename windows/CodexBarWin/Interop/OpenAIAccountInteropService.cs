@@ -90,14 +90,28 @@ public static class OpenAIAccountCSVService
         }
 
         var trimmed = normalized.TrimStart().TrimStart('\uFEFF');
-        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        if (trimmed.StartsWith("[", StringComparison.Ordinal) || trimmed.StartsWith("{", StringComparison.Ordinal))
         {
+            JsonNode? root;
+            try { root = JsonNode.Parse(trimmed); }
+            catch (JsonException) { return ParseJSONLines(trimmed); }
+            if (root is JsonObject obj)
+            {
+                var container = obj["data"] as JsonObject ?? obj;
+                var records = container["accounts"] ?? container["items"] ?? container["profiles"] ?? container["records"] ?? obj["data"];
+                if (records is JsonArray rows)
+                {
+                    var bundle = new JsonObject { ["accounts"] = rows.DeepClone() };
+                    bundle["active_account_id"] = (container["active_account_id"] ?? obj["active_account_id"])?.DeepClone();
+                    bundle["proxies"] = (container["proxies"] ?? obj["proxies"])?.DeepClone();
+                    return ParseInteropJSON(bundle.ToJsonString());
+                }
+                if (records is JsonObject map)
+                {
+                    return ParseFlatJSON(new JsonArray(map.Select(entry => entry.Value?.DeepClone()).ToArray()).ToJsonString());
+                }
+            }
             return ParseFlatJSON(trimmed);
-        }
-        if (trimmed.StartsWith("{", StringComparison.Ordinal))
-        {
-            using var document = JsonDocument.Parse(trimmed);
-            return document.RootElement.TryGetProperty("accounts", out _) ? ParseInteropJSON(trimmed) : ParseFlatJSON(trimmed);
         }
 
         return ParseLegacyCSV(normalized);
@@ -169,8 +183,7 @@ public static class OpenAIAccountCSVService
         return payload.ToJsonString(options) + "\n";
     }
 
-    // Codex2API also accepts flat JSON objects and arrays. Keep the default
-    // codexbar bundle above because it preserves more interoperability metadata.
+    // Flat records are useful for integrations that do not need bundle metadata.
     public static string ExportFlatJSON(IReadOnlyList<TokenAccount> accounts)
     {
         var rows = accounts.Select(account => new
@@ -186,16 +199,43 @@ public static class OpenAIAccountCSVService
         return JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }) + "\n";
     }
 
+    public static string ExportFlatJSONLines(IReadOnlyList<TokenAccount> accounts)
+    {
+        using var document = JsonDocument.Parse(ExportFlatJSON(accounts));
+        return string.Join("\n", document.RootElement.EnumerateArray().Select(item => item.GetRawText())) + "\n";
+    }
+
+    private static ParsedOpenAIAccountCSV ParseJSONLines(string text)
+    {
+        var rows = new JsonArray();
+        foreach (var line in text.Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try { rows.Add(JsonNode.Parse(line)); }
+            catch (JsonException ex)
+            {
+                throw new OpenAIAccountImportException(OpenAIAccountImportError.UnsupportedDataType, $"JSON Lines 格式无效：{ex.Message}");
+            }
+        }
+        return ParseFlatJSON(rows.ToJsonString());
+    }
+
     public static string ExportLegacyCSV(IReadOnlyList<TokenAccount> accounts, string? activeAccountId)
+        => ExportDelimited(accounts, activeAccountId, ',');
+
+    public static string ExportTSV(IReadOnlyList<TokenAccount> accounts, string? activeAccountId)
+        => ExportDelimited(accounts, activeAccountId, '\t');
+
+    private static string ExportDelimited(IReadOnlyList<TokenAccount> accounts, string? activeAccountId, char delimiter)
     {
         static string Cell(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
-        var lines = new List<string> { string.Join(",", HeaderOrder) };
+        var lines = new List<string> { string.Join(delimiter, HeaderOrder) };
         foreach (var account in accounts)
         {
             var values = new[] { FormatVersion, account.Email, account.AccountId,
                 account.AccessToken, account.RefreshToken, account.IdToken,
                 account.AccountId == activeAccountId ? "true" : "false" };
-            lines.Add(string.Join(",", values.Select(Cell)));
+            lines.Add(string.Join(delimiter, values.Select(Cell)));
         }
         return string.Join("\n", lines) + "\n";
     }
@@ -213,15 +253,48 @@ public static class OpenAIAccountCSVService
         foreach (var item in input)
         {
             if (item is not JsonObject obj) continue;
-            var credentials = obj["credentials"] is JsonObject existing ? (JsonObject)existing.DeepClone() : (JsonObject)obj.DeepClone();
+            var credentials = CompatibleCredentials(obj);
             wrapped.Add(new JsonObject
             {
-                ["platform"] = "openai", ["type"] = "oauth",
+                ["platform"] = GetTrimmedString(GetNodeText(obj["platform"])) ?? "openai",
+                ["type"] = GetTrimmedString(GetNodeText(obj["type"])) ?? "oauth",
                 ["name"] = GetTrimmedString(GetNodeText(obj["name"])),
                 ["credentials"] = credentials
             });
         }
         return ParseInteropJSON(new JsonObject { ["accounts"] = wrapped }.ToJsonString());
+    }
+
+    private static JsonObject CompatibleCredentials(JsonObject account)
+    {
+        var source = account["credentials"] as JsonObject
+            ?? account["auth"] as JsonObject
+            ?? account["oauth"] as JsonObject
+            ?? account;
+        var tokenSource = source["tokens"] as JsonObject ?? source;
+        var credentials = (JsonObject)tokenSource.DeepClone();
+        foreach (var (canonical, aliases) in new (string, string[])[]
+        {
+            ("access_token", ["accessToken"]),
+            ("refresh_token", ["refreshToken"]),
+            ("id_token", ["idToken"]),
+            ("account_id", ["accountId", "chatgpt_account_id", "chatgptAccountId"]),
+            ("email", ["accountEmail"]),
+            ("expires_at", ["expiresAt"]),
+            ("plan_type", ["planType"]),
+            ("client_id", ["clientId"]),
+        })
+        {
+            if (credentials[canonical] != null) continue;
+            foreach (var candidate in new[] { tokenSource, source, account })
+            {
+                var value = candidate[canonical] ?? aliases.Select(alias => candidate[alias]).FirstOrDefault(node => node != null);
+                if (value == null) continue;
+                credentials[canonical] = value.DeepClone();
+                break;
+            }
+        }
+        return credentials;
     }
 
     private static JsonObject MakeInteropAccountObject(
@@ -371,17 +444,6 @@ public static class OpenAIAccountCSVService
             throw new OpenAIAccountImportException(OpenAIAccountImportError.UnsupportedDataType, $"JSON 格式无效：{ex.Message}");
         }
 
-        if (payload.TryGetPropertyValue("type", out var typeNode))
-        {
-            var typeString = GetTrimmedString(GetNodeText(typeNode));
-            if (string.IsNullOrWhiteSpace(typeString) == false
-                && string.Equals(typeString, "rhino2api-data", StringComparison.OrdinalIgnoreCase) == false
-                && string.Equals(typeString, "rhino2api-bundle", StringComparison.OrdinalIgnoreCase) == false)
-            {
-                throw new OpenAIAccountImportException(OpenAIAccountImportError.UnsupportedDataType, "不支持的导入类型");
-            }
-        }
-
         if (!payload.TryGetPropertyValue("accounts", out var accountNodes)
             || accountNodes is not JsonArray accountArray)
         {
@@ -404,20 +466,17 @@ public static class OpenAIAccountCSVService
             var platform = GetTrimmedString(GetNodeText(obj["platform"])).ToLowerInvariant();
             var type = GetTrimmedString(GetNodeText(obj["type"])).ToLowerInvariant();
 
-            if (platform is not ("" or "openai"))
+            if (platform is not ("" or "openai" or "codex"))
             {
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(type) == false && type != "oauth")
+            if (string.IsNullOrWhiteSpace(type) == false && type is not ("oauth" or "codex" or "openai"))
             {
                 continue;
             }
 
-            if (obj["credentials"] is not JsonObject credentials)
-            {
-                throw new OpenAIAccountImportException(OpenAIAccountImportError.MissingRequiredValue, "账号缺少 credentials");
-            }
+            var credentials = CompatibleCredentials(obj);
 
             var accessToken = GetTrimmedString(GetNodeText(credentials["access_token"]));
             var refreshToken = GetTrimmedString(GetNodeText(credentials["refresh_token"]));
@@ -548,9 +607,20 @@ public static class OpenAIAccountCSVService
             throw new OpenAIAccountImportException(OpenAIAccountImportError.EmptyFile, "文件内容为空");
         }
 
-        var headers = SplitCsvLine(lines[headerIndex]);
-        var headerSet = new HashSet<string>(headers.Select(v => v.Trim()), StringComparer.Ordinal);
-        foreach (var required in HeaderOrder)
+        var delimiter = lines[headerIndex].Contains('\t') ? '\t' : ',';
+        var headers = SplitCsvLine(lines[headerIndex], delimiter);
+        static string CanonicalHeader(string name) => name.Trim().TrimStart('\uFEFF').ToLowerInvariant() switch
+        {
+            "accesstoken" or "access-token" => "access_token",
+            "refreshtoken" or "refresh-token" => "refresh_token",
+            "idtoken" or "id-token" => "id_token",
+            "accountid" or "chatgpt_account_id" or "chatgptaccountid" => "account_id",
+            "accountemail" or "account_email" => "email",
+            "active" or "isactive" => "is_active",
+            var value => value,
+        };
+        var headerSet = new HashSet<string>(headers.Select(CanonicalHeader), StringComparer.Ordinal);
+        foreach (var required in new[] { "access_token", "refresh_token", "id_token" })
         {
             if (headerSet.Contains(required) == false)
             {
@@ -559,9 +629,10 @@ public static class OpenAIAccountCSVService
         }
 
         var headerMap = headers
-            .Select((name, index) => new { name, index })
+            .Select((name, index) => new { name = CanonicalHeader(name), index })
             .Where(item => string.IsNullOrWhiteSpace(item.name) == false)
-            .ToDictionary(item => item.name.Trim(), item => item.index, StringComparer.Ordinal);
+            .GroupBy(item => item.name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().index, StringComparer.Ordinal);
 
         var accounts = new List<TokenAccount>(Math.Max(0, lines.Length - headerIndex - 1));
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -575,7 +646,7 @@ public static class OpenAIAccountCSVService
             }
 
             var rowNo = row + 1;
-            var columns = SplitCsvLine(lines[row]);
+            var columns = SplitCsvLine(lines[row], delimiter);
             if (columns.Count != headers.Count)
             {
                 throw new OpenAIAccountImportException(OpenAIAccountImportError.InvalidCSV, $"第 {rowNo} 行列数不正确");
@@ -585,13 +656,14 @@ public static class OpenAIAccountCSVService
             {
                 if (headerMap.TryGetValue(key, out var idx) == false)
                 {
-                    throw new InvalidOperationException($"缺少列 {key}");
+                    return string.Empty;
                 }
 
                 return columns[idx].Trim();
             }
 
-            if (!string.Equals(Value("format_version"), FormatVersion, StringComparison.OrdinalIgnoreCase))
+            if (headerMap.ContainsKey("format_version")
+                && !string.Equals(Value("format_version"), FormatVersion, StringComparison.OrdinalIgnoreCase))
             {
                 throw new OpenAIAccountImportException(OpenAIAccountImportError.UnsupportedFormatVersion, $"第 {rowNo} 行 format_version 不是 {FormatVersion}");
             }
@@ -625,6 +697,11 @@ public static class OpenAIAccountCSVService
             {
                 email = tokenMetadata.Email ?? string.Empty;
             }
+            else if (tokenMetadata.Email is not null
+                && !string.Equals(email, tokenMetadata.Email, StringComparison.Ordinal))
+            {
+                throw new OpenAIAccountImportException(OpenAIAccountImportError.EmailMismatch, $"第 {rowNo} 行 email 与 token 中解析值不一致");
+            }
 
             if (string.IsNullOrWhiteSpace(accountId))
             {
@@ -636,7 +713,7 @@ public static class OpenAIAccountCSVService
                 throw new OpenAIAccountImportException(OpenAIAccountImportError.DuplicateAccountId, $"第 {rowNo} 行 account_id 重复: {accountId}");
             }
 
-            var isActive = ParseActive(Value("is_active"), rowNo);
+            var isActive = headerMap.ContainsKey("is_active") && ParseActive(Value("is_active"), rowNo);
             if (isActive)
             {
                 if (string.IsNullOrWhiteSpace(activeAccountId) == false)
@@ -675,7 +752,7 @@ public static class OpenAIAccountCSVService
         );
     }
 
-    private static List<string> SplitCsvLine(string line)
+    private static List<string> SplitCsvLine(string line, char delimiter)
     {
         var fields = new List<string>();
         var current = new StringBuilder();
@@ -718,7 +795,7 @@ public static class OpenAIAccountCSVService
                 continue;
             }
 
-            if (ch == ',')
+            if (ch == delimiter)
             {
                 fields.Add(current.ToString());
                 current.Clear();

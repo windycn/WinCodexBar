@@ -40,7 +40,16 @@ WinCodexBar 是 Windows 上的 WinUI 3 工作台。日常用托盘速览额度�
 
 - 保存多个 Codex 账号，手动切换或聚合查看；刷新 5 小时和 7 天额度、重置时间与账号状态。鼠标悬停账号时，有重置卡才显示其到期时间。
 - 托盘默认使用圆环数字样式，可在设置中预览并切换其他样式。额度低于设定阈值、重置窗口开启等关键事件可发 Windows 通知，并避免重复提醒。
-- 导入默认支持 [codexbar](https://github.com/lizhelang/codexbar) JSON，也支持包含完整 OAuth 凭据的 Codex2API JSON 和旧版 CSV；导出默认是 codexbar JSON，也可选择其他格式。**导出文件含可使用账号的凭据，请妥善保存，勿公开上传。**
+- 账号导入支持完整 JSON 备份、单账号授权 JSON、账号数组、常见外层包装、JSON Lines、CSV 和 TSV；可识别嵌套 `tokens` / `credentials` 与常见字段别名。导出可选完整 JSON（默认，保留账号设置）、通用 JSON 数组、CSV、TSV 或 JSON Lines。导入需要完整的 OAuth 凭据，并校验账号信息与令牌。**导出文件含可使用账号的凭据，请妥善保存，勿公开上传。**
+
+| 账号文件 | 适用场景 |
+| --- | --- |
+| 完整 JSON | WinCodexBar 备份与恢复，包含当前账号选择和账号附加设置 |
+| 通用 JSON | 单账号对象、账号数组，以及 `accounts`、`items`、`profiles`、`records` 或 `data` 包装的账号记录 |
+| JSON Lines | 每行一条 JSON 账号记录，便于脚本逐行处理 |
+| CSV / TSV | 带表头的账号表格；识别常见列名别名，缺少邮箱或账号 ID 时从令牌提取 |
+
+各格式都需提供 `access_token`、`refresh_token`、`id_token`。只含单一令牌的文件不能恢复完整账号。
 
 ### 生图工作台
 

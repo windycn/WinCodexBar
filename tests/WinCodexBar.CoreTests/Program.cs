@@ -150,11 +150,35 @@ try
         IdToken = Jwt("""{"email":"fixture@example.test"}"""), RefreshToken = "rt-fixture"
     };
     var flatExport = OpenAIAccountCSVService.ExportFlatJSON([importFixture]);
-    Check(OpenAIAccountCSVService.Parse(flatExport).Accounts.Single().AccountId == "user__acct", "Codex2API flat JSON import/export roundtrip");
+    Check(OpenAIAccountCSVService.Parse(flatExport).Accounts.Single().AccountId == "user__acct", "flat JSON import/export roundtrip");
     var csvExport = OpenAIAccountCSVService.ExportLegacyCSV([importFixture], importFixture.AccountId);
     Check(OpenAIAccountCSVService.Parse(csvExport).ActiveAccountId == importFixture.AccountId, "legacy CSV import/export roundtrip");
     var bundleExport = OpenAIAccountCSVService.ExportInteropBundle([importFixture], new Dictionary<string, OAuthAccountInteropMetadata>(), null, importFixture.AccountId);
-    Check(OpenAIAccountCSVService.Parse(bundleExport).Accounts.Single().Email == importFixture.Email, "codexbar JSON remains default compatible format");
+    Check(OpenAIAccountCSVService.Parse(bundleExport).Accounts.Single().Email == importFixture.Email, "full JSON bundle roundtrip");
+    var linesExport = OpenAIAccountCSVService.ExportFlatJSONLines([importFixture]);
+    Check(OpenAIAccountCSVService.Parse(linesExport).Accounts.Single().Email == importFixture.Email, "JSON Lines roundtrip");
+    var authObject = System.Text.Json.Nodes.JsonNode.Parse(flatExport)![0]!.DeepClone();
+    var nested = new System.Text.Json.Nodes.JsonObject { ["tokens"] = authObject };
+    Check(OpenAIAccountCSVService.Parse(nested.ToJsonString()).Accounts.Single().Email == importFixture.Email, "nested auth JSON import");
+    var wrappedAccounts = new System.Text.Json.Nodes.JsonObject { ["data"] = new System.Text.Json.Nodes.JsonObject { ["items"] = System.Text.Json.Nodes.JsonNode.Parse(flatExport) } };
+    Check(OpenAIAccountCSVService.Parse(wrappedAccounts.ToJsonString()).Accounts.Single().AccountId == importFixture.AccountId, "wrapped account list import");
+    var genericCsv = "email,accountId,accessToken,refreshToken,idToken,isActive\n" + csvExport.Split('\n')[1]["\"v1\",".Length..];
+    Check(OpenAIAccountCSVService.Parse(genericCsv).Accounts.Single().Email == importFixture.Email, "CSV aliases import");
+    Check(OpenAIAccountCSVService.Parse(OpenAIAccountCSVService.ExportTSV([importFixture], importFixture.AccountId)).Accounts.Single().Email == importFixture.Email, "TSV roundtrip");
+    var camelCaseAuth = new System.Text.Json.Nodes.JsonObject
+    {
+        ["platform"] = "codex", ["type"] = "codex",
+        ["auth"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["accessToken"] = importFixture.AccessToken, ["refreshToken"] = importFixture.RefreshToken,
+            ["idToken"] = importFixture.IdToken, ["accountId"] = importFixture.OpenAIAccountId
+        }
+    };
+    Check(OpenAIAccountCSVService.Parse(new System.Text.Json.Nodes.JsonObject { ["accounts"] = new System.Text.Json.Nodes.JsonArray(camelCaseAuth) }.ToJsonString()).Accounts.Single().Email == importFixture.Email, "nested camel-case authorization import");
+    var incompleteRejected = false;
+    try { OpenAIAccountCSVService.Parse("{\"refresh_token\":\"rt-only\"}"); }
+    catch (OpenAIAccountImportException) { incompleteRejected = true; }
+    Check(incompleteRejected, "incomplete credentials rejected");
     Console.WriteLine($"{passed} checks passed");
 }
 finally { Directory.Delete(scratch, true); }

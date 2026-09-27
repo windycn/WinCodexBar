@@ -564,6 +564,9 @@ public sealed partial class MainWindow : Window
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
         picker.FileTypeFilter.Add(".json");
         picker.FileTypeFilter.Add(".csv");
+        picker.FileTypeFilter.Add(".jsonl");
+        picker.FileTypeFilter.Add(".tsv");
+        picker.FileTypeFilter.Add(".txt");
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         var file = await picker.PickSingleFileAsync();
         if (file is null) return;
@@ -585,9 +588,11 @@ public sealed partial class MainWindow : Window
     {
         if (_state.Registry.Accounts.Count == 0) { await ShowMessageAsync("导出账号", "当前没有账号。"); return; }
         var format = new ComboBox { Header = "导出格式", SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-        format.Items.Add("codexbar JSON（推荐，保留完整账号信息）");
-        format.Items.Add("Codex2API 扁平 JSON");
-        format.Items.Add("codexbar CSV（旧版兼容）");
+        format.Items.Add("完整 JSON（推荐，保留全部账号信息）");
+        format.Items.Add("通用 JSON（账号数组）");
+        format.Items.Add("CSV 表格");
+        format.Items.Add("JSON Lines（每行一个账号）");
+        format.Items.Add("TSV 表格（制表符分隔）");
         var exportOptions = new StackPanel { Spacing = 12 };
         exportOptions.Children.Add(format);
         exportOptions.Children.Add(new TextBlock
@@ -604,8 +609,8 @@ public sealed partial class MainWindow : Window
         if (approved != ContentDialogResult.Primary) return;
         var picker = new FileSavePicker { SuggestedFileName = "openai_accounts_export" };
         var selectedFormat = format.SelectedIndex;
-        picker.FileTypeChoices.Add(selectedFormat == 2 ? "CSV" : "JSON",
-            new List<string> { selectedFormat == 2 ? ".csv" : ".json" });
+        var extension = selectedFormat switch { 2 => ".csv", 3 => ".jsonl", 4 => ".tsv", _ => ".json" };
+        picker.FileTypeChoices.Add(extension.TrimStart('.').ToUpperInvariant(), new List<string> { extension });
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         var file = await picker.PickSaveFileAsync();
         if (file is null) return;
@@ -615,13 +620,15 @@ public sealed partial class MainWindow : Window
             {
                 1 => OpenAIAccountCSVService.ExportFlatJSON(_state.Registry.Accounts),
                 2 => OpenAIAccountCSVService.ExportLegacyCSV(_state.Registry.Accounts, _state.Registry.ActiveAccountId),
+                3 => OpenAIAccountCSVService.ExportFlatJSONLines(_state.Registry.Accounts),
+                4 => OpenAIAccountCSVService.ExportTSV(_state.Registry.Accounts, _state.Registry.ActiveAccountId),
                 _ => OpenAIAccountCSVService.ExportInteropBundle(
                     _state.Registry.Accounts, _state.Registry.MetadataByAccountId,
                     _state.Registry.ProxiesJSON, _state.Registry.ActiveAccountId)
             };
             await File.WriteAllTextAsync(file.Path, text);
             StatusText.Text = "账号已导出";
-            ((App)Application.Current).Notify("账号导出完成", "JSON/CSV 文件包含账号凭据，请妥善保存，勿公开分享。", "accounts");
+            ((App)Application.Current).Notify("账号导出完成", "导出文件包含账号凭据，请妥善保存，勿公开分享。", "accounts");
         }
         catch (Exception ex) { await ShowMessageAsync("导出失败", ex.Message); }
     }

@@ -44,7 +44,16 @@ Account data and settings live in `%USERPROFILE%\.codexbar`, or under `CODEXBAR_
 - **Editable SVG:** A separate overview switch and window. Convert a newly generated image, one from the gallery, or a locally uploaded/pasted image. Choose the account, text model, reasoning level, and extra instructions. Stronger models can better reproduce complex shapes and details; manual touch-up may still be needed. Results have their own SVG gallery, preview, file-open, and code-copy actions.
 - **Token and sessions:** Daily activity, streaks, peak usage, local session counts, model distribution, recent sessions, and estimated cost. Image, SVG, and quality-check usage is tracked too. Estimates are not an OpenAI invoice.
 - **Model quality checks:** Select an account, model, reasoning level, and preset or custom prompt. Render the resulting HTML in the app and retain the history. A single run is not proof that a model has degraded, and it uses the selected account's quota.
-- **Import and export:** Default to [codexbar](https://github.com/lizhelang/codexbar) JSON. Complete-credential Codex2API JSON and legacy CSV can also be imported; additional export formats are available.
+- **Import and export:** Import full JSON backups, single-account authorization JSON, account arrays, common wrappers, JSON Lines, CSV, and TSV. Nested `tokens` / `credentials` and common field aliases are recognized. Export as full JSON (default, including account settings), generic JSON arrays, CSV, TSV, or JSON Lines. Imports require complete OAuth credentials and validate account identity against the tokens. Exported files contain usable credentials; keep them private.
+
+| Account file | Intended use |
+| --- | --- |
+| Full JSON | WinCodexBar backup and restore, including the active account and extra account settings |
+| Generic JSON | A single account, an array, or records under `accounts`, `items`, `profiles`, `records`, or `data` |
+| JSON Lines | One JSON account per line for script processing |
+| CSV / TSV | Header-based tables with common column aliases; email and account ID can be read from the tokens when omitted |
+
+Every format needs `access_token`, `refresh_token`, and `id_token`. A file containing only one token cannot restore a complete account.
 - **Updates:** Check manually or enable periodic checks and silent updates. Packages are SHA256-verified, with account/settings backup and a full-package fallback when a matching delta is unavailable. Silent installation waits for all windows and creative jobs to be idle. The settings page also links to the GitHub project.
 
 Image and SVG gallery folders can be changed independently. Metadata indexes and trash are kept separately, and incomplete entries can be recovered or cleaned by age.
